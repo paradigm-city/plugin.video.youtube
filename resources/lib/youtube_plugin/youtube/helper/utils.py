@@ -699,6 +699,15 @@ def update_video_items(provider, context, video_id_dict,
             playlist_id = playlist_match.group(PLAYLIST_ID)
             playlist_channel_id = playlist_match.group(CHANNEL_ID)
 
+    bookmarked_channel_ids = set()
+    bookmarks = context.get_bookmarks_list().get_items()
+    for bookmark_id, bookmark in bookmarks.items():
+        bookmark_channel_id = getattr(bookmark, 'channel_id', None)
+        if bookmark_channel_id:
+            bookmarked_channel_ids.add(bookmark_channel_id)
+        elif isinstance(bookmark, float):
+            bookmarked_channel_ids.add(bookmark_id)
+
     cxm_remove_from_playlist = menu_items.playlist_remove_from(
         context,
         playlist_id=playlist_id,
@@ -1099,7 +1108,7 @@ def update_video_items(provider, context, video_id_dict,
                 if channel_id and logged_in else
                 None,
                 cxm_remove_bookmarked_channel
-                if channel_id and in_bookmarks_list else
+                if channel_id and channel_id in bookmarked_channel_ids else
                 cxm_bookmark_channel
                 if channel_id else
                 None,
