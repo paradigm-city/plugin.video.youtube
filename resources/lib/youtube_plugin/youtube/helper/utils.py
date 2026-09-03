@@ -705,6 +705,11 @@ def update_video_items(provider, context, video_id_dict,
     )
     cxm_separator = menu_items.separator()
     cxm_play = menu_items.media_play(context)
+    cxm_rate = (
+        menu_items.video_rate(context)
+        if logged_in else
+        None
+    )
     cxm_play_with_subtitles = (
         None
         if subtitles_prompt else
@@ -745,7 +750,8 @@ def update_video_items(provider, context, video_id_dict,
         menu_items.ARTIST_INFOLABEL,
     )
     cxm_bookmark_channel = menu_items.bookmark_add_channel(context)
-    cxm_mark_as = menu_items.history_local_mark_as(context)
+    cxm_mark_watched = menu_items.history_local_mark_watched(context)
+    cxm_mark_unwatched = menu_items.history_local_mark_unwatched(context)
     cxm_reset_resume = menu_items.history_local_reset_resume(context)
     cxm_refresh_listing = menu_items.refresh_listing(context)
     cxm_more = menu_items.video_more_for(
@@ -753,6 +759,7 @@ def update_video_items(provider, context, video_id_dict,
         logged_in=logged_in,
         refresh=path.startswith((PATHS.LIKED_VIDEOS, PATHS.DISLIKED_VIDEOS)),
     )
+    cxm_favourite = menu_items.add_to_favourites(context)
 
     for video_id, yt_item in data.items():
         if not yt_item:
@@ -1057,8 +1064,6 @@ def update_video_items(provider, context, video_id_dict,
 
         item_from_playlist = playlist_id or media_item.playlist_id
 
-        # Provide 'remove' in own playlists or virtual lists, except the
-        # YouTube Watch History list as that does not support direct edits
         if (not in_watch_history_list
                 and item_from_playlist
                 and logged_in
@@ -1072,69 +1077,62 @@ def update_video_items(provider, context, video_id_dict,
 
         if available:
             context_menu.extend((
+                # YouTube video
                 cxm_play,
+                cxm_rate,
+                cxm_queue,
+                cxm_watch_later
+                if watch_later_id and not in_watch_later_list else
+                menu_items.watch_later_local_add(context, media_item)
+                if not in_watch_later_list else
+                None,
+                cxm_more,
+                cxm_separator,
+                # Channel
+                cxm_go_to_channel
+                if channel_id
+                and context.create_path(PATHS.CHANNEL, channel_id) != path else
+                None,
+                cxm_unsubscribe_from_channel
+                if channel_id and logged_in and in_my_subscriptions_list else
+                cxm_subscribe_to_channel
+                if channel_id and logged_in else
+                None,
+                cxm_remove_bookmarked_channel
+                if channel_id and in_bookmarks_list else
+                cxm_bookmark_channel
+                if channel_id else
+                None,
+                # menu_items.bookmark_add(context, media_item)
+                # if not in_bookmarks_list else
+                # None,
+                cxm_separator,
+                # General Kodi playback and item actions
                 cxm_play_with_subtitles,
                 cxm_play_audio_only,
                 cxm_play_ask_for_quality,
                 cxm_play_timeshift if media_item.live else None,
                 cxm_play_using,
                 cxm_play_from if item_from_playlist else None,
-                cxm_queue,
+                cxm_refresh_listing,
+                cxm_mark_watched if use_play_data else None,
+                cxm_mark_unwatched if use_play_data else None,
+                cxm_reset_resume
+                if use_play_data and play_data
+                and (play_data.get('played_percent', 0) > 0
+                     or play_data.get('played_time', 0) > 0) else
+                None,
+                cxm_favourite,
+            ))
+        else:
+            context_menu.extend((
+                # General actions for unavailable videos
+                cxm_refresh_listing,
+                cxm_more,
+                cxm_favourite,
             ))
 
-        # add 'Watch Later' only if we are not in my 'Watch Later' list
-        if not available or in_watch_later_list:
-            pass
-        elif watch_later_id:
-            context_menu.append(cxm_watch_later)
-        else:
-            context_menu.append(
-                menu_items.watch_later_local_add(
-                    context, media_item
-                )
-            )
-
-        if not in_bookmarks_list:
-            context_menu.append(
-                menu_items.bookmark_add(
-                    context, media_item
-                )
-            )
-
-        if channel_id:
-            # got to [CHANNEL] only if we are not directly in the channel
-            if context.create_path(PATHS.CHANNEL, channel_id) != path:
-                media_item.channel_id = channel_id
-                context_menu.append(cxm_go_to_channel)
-
-            if logged_in:
-                context_menu.append(
-                    # unsubscribe from the channel of the video
-                    cxm_unsubscribe_from_channel
-                    if in_my_subscriptions_list else
-                    # subscribe to the channel of the video
-                    cxm_subscribe_to_channel
-                )
-
-            context_menu.append(
-                # remove bookmarked channel of the video
-                cxm_remove_bookmarked_channel
-                if in_my_subscriptions_list else
-                # bookmark channel of the video
-                cxm_bookmark_channel
-            )
-
-        if use_play_data:
-            context_menu.append(cxm_mark_as)
-            if play_data and (play_data.get('played_percent', 0) > 0
-                              or play_data.get('played_time', 0) > 0):
-                context_menu.append(cxm_reset_resume)
-
-        # more...
-        context_menu.extend((
-            cxm_refresh_listing,
-            cxm_more,
-        ))
+        media_item.channel_id = channel_id
 
         update_duplicate_items(media_item,
                                media_items,

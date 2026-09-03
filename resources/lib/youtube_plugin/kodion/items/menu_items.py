@@ -739,6 +739,17 @@ def bookmark_add(context, item):
     )
 
 
+def add_to_favourites(context):
+    return (
+        'Add to favourites',
+        'AddToFavourites({uri},{title},{image})'.format(
+            uri=URI_INFOLABEL,
+            title=TITLE_INFOLABEL,
+            image='$INFO[ListItem.Icon]',
+        ),
+    )
+
+
 def bookmark_add_channel(context,
                          channel_id=CHANNEL_ID_INFOLABEL,
                          channel_name=ARTIST_INFOLABEL):
