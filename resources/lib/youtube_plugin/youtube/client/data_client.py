@@ -366,6 +366,7 @@ class YouTubeDataClient(YouTubeLoginClient):
 
     def __init__(self, context, items_per_page=None, **kwargs):
         self.channel_id = None
+        self._subscription_status = None
 
         if items_per_page is None:
             items_per_page = context.get_settings().items_per_page()
@@ -382,6 +383,7 @@ class YouTubeDataClient(YouTubeLoginClient):
 
     def set_access_token(self, access_tokens=None):
         super(YouTubeDataClient, self).set_access_token(access_tokens)
+        self._subscription_status = None
         if self.logged_in:
             context = self._context
             function_cache = context.get_function_cache()
@@ -395,6 +397,49 @@ class YouTubeDataClient(YouTubeLoginClient):
             )
         else:
             self.channel_id = None
+
+    def get_subscription_status(self, channel_ids):
+        if not self.logged_in:
+            return {}
+        if not channel_ids:
+            return {}
+
+        if self._subscription_status is None:
+            subscription_ids = set()
+            page_token = ''
+            while True:
+                json_data = self.get_subscription(
+                    'mine',
+                    page_token=page_token,
+                )
+                if not json_data:
+                    return None
+
+                for item in json_data.get('items') or ():
+                    if not isinstance(item, dict):
+                        continue
+                    channel_id = (item.get('snippet') or {}).get(
+                        'resourceId', {}
+                    ).get('channelId')
+                    if channel_id:
+                        subscription_ids.add(channel_id)
+                page_token = json_data.get('nextPageToken', '')
+                if not page_token:
+                    self._subscription_status = subscription_ids
+                    break
+
+        return {
+            channel_id: channel_id in self._subscription_status
+            for channel_id in channel_ids
+        }
+
+    def set_subscription_status(self, channel_id, subscribed):
+        if self._subscription_status is None:
+            return
+        if subscribed:
+            self._subscription_status.add(channel_id)
+        else:
+            self._subscription_status.discard(channel_id)
 
     def max_results(self):
         return self._context.get_param('items_per_page') or self._max_results

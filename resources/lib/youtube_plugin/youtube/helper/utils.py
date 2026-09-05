@@ -394,7 +394,8 @@ def update_playlist_items(provider, context, playlist_id_dict,
         return
 
     access_manager = context.get_access_manager()
-    logged_in = provider.get_client(context).logged_in
+    client = provider.get_client(context)
+    logged_in = client.logged_in
     if logged_in:
         history_id = access_manager.get_watch_history_id()
         watch_later_id = access_manager.get_watch_later_id()
@@ -634,7 +635,8 @@ def update_video_items(provider, context, video_id_dict,
     if not data:
         return
 
-    logged_in = provider.get_client(context).logged_in
+    client = provider.get_client(context)
+    logged_in = client.logged_in
     if logged_in:
         watch_later_id = context.get_access_manager().get_watch_later_id()
     else:
@@ -678,7 +680,8 @@ def update_video_items(provider, context, video_id_dict,
     in_watch_history_list = False
     in_watch_later_list = False
 
-    if path.startswith(PATHS.MY_SUBSCRIPTIONS):
+    if path.startswith((PATHS.MY_SUBSCRIPTIONS,
+                        PATHS.MY_SUBSCRIPTIONS_FILTERED)):
         in_my_subscriptions_list = True
     elif path.startswith(PATHS.WATCH_LATER):
         in_watch_later_list = True
@@ -698,6 +701,15 @@ def update_video_items(provider, context, video_id_dict,
         if playlist_match:
             playlist_id = playlist_match.group(PLAYLIST_ID)
             playlist_channel_id = playlist_match.group(CHANNEL_ID)
+
+    subscription_status = client.get_subscription_status({
+        snippet.get('channelId')
+        for snippet in (
+            (yt_item.get('snippet') or {})
+            for yt_item in data.values()
+        )
+        if snippet.get('channelId')
+    }) if logged_in else None
 
     bookmarked_channel_ids = set()
     bookmarks = context.get_bookmarks_list().get_items()
@@ -1071,6 +1083,12 @@ def update_video_items(provider, context, video_id_dict,
         channel_id = snippet.get('channelId') or playlist_channel_id
         media_item.channel_id = channel_id
 
+        subscribed = (
+            subscription_status.get(channel_id, in_my_subscriptions_list)
+            if subscription_status is not None else
+            in_my_subscriptions_list
+        )
+
         item_from_playlist = playlist_id or media_item.playlist_id
 
         if (not in_watch_history_list
@@ -1103,7 +1121,7 @@ def update_video_items(provider, context, video_id_dict,
                 and context.create_path(PATHS.CHANNEL, channel_id) != path else
                 None,
                 cxm_unsubscribe_from_channel
-                if channel_id and logged_in and in_my_subscriptions_list else
+                if channel_id and logged_in and subscribed else
                 cxm_subscribe_to_channel
                 if channel_id and logged_in else
                 None,
