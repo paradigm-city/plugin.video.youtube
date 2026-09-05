@@ -504,7 +504,7 @@ class Storage(object):
                 except Exception as exc:
                     if isinstance(exc, sqlite3.OperationalError):
                         pass
-                    elif isinstance(exc, sqlite3.InterfaceError):
+                    elif isinstance(exc, (sqlite3.InterfaceError, KeyError)):
                         cursor = self._db.cursor()
                     else:
                         abort = True
