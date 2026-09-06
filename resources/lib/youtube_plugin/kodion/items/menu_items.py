@@ -741,7 +741,7 @@ def bookmark_add(context, item):
 
 def add_to_favourites(context):
     return (
-        'Add to favourites',
+        context.localize(14076, default_text='Add to favourites'),
         'AddToFavourites({uri},{title},{image})'.format(
             uri=URI_INFOLABEL,
             title=TITLE_INFOLABEL,
