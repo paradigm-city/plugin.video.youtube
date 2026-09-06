@@ -27,20 +27,9 @@ class StorageLock(object):
     def __init__(self):
         self._lock = RLock()
         self._num_accessing = 0
-        self._num_waiting = 0
 
-    if current_system_version.compatible(19):
-        def __enter__(self):
-            self._num_waiting += 1
-            locked = not self._lock.acquire(timeout=3)
-            self._num_waiting -= 1
-            return locked
-    else:
-        def __enter__(self):
-            self._num_waiting += 1
-            locked = not self._lock.acquire(blocking=False)
-            self._num_waiting -= 1
-            return locked
+    def __enter__(self):
+        return self._lock.acquire()
 
     def __exit__(self, exc_type, exc_val, exc_tb):
         try:
@@ -48,17 +37,27 @@ class StorageLock(object):
         except RuntimeError:
             pass
 
+    def acquire(self, *args, **kwargs):
+        return self._lock.acquire(*args, **kwargs)
+
+    def release(self):
+        try:
+            self._lock.release()
+        except RuntimeError:
+            pass
+
     def accessing(self, start=False, done=False):
-        num = self._num_accessing
-        if start:
-            num += 1
-        elif done and num > 0:
-            num -= 1
-        self._num_accessing = num
-        return num > 0
+        with self._lock:
+            num = self._num_accessing
+            if start:
+                num += 1
+            elif done and num > 0:
+                num -= 1
+            self._num_accessing = num
+            return num > 0
 
     def waiting(self):
-        return self._num_waiting > 0
+        return False
 
 
 class ExistingDBConnection(object):
@@ -86,7 +85,7 @@ class Storage(object):
     _table_name = 'storage_v2'
     _table_updated = False
 
-    _sql = {
+    _raw_sql = {
         'clear': (
             'DELETE'
             ' FROM {table};'
@@ -237,6 +236,7 @@ class Storage(object):
             ' WHERE key = ?;'
         ),
     }
+    _sql = {}
 
     def __init__(self,
                  filepath,
@@ -266,14 +266,14 @@ class Storage(object):
             statements = [
                 (name, sql.format(table=self._table_name,
                                   order_col='time' if migrate else 'timestamp'))
-                for name, sql in Storage._sql.items()
+                for name, sql in Storage._raw_sql.items()
             ]
             self._base._sql.update(statements)
         elif self._sql and '_partial' in self._sql:
             statements = {
                 name: sql.format(table=self._table_name,
                                  order_col='timestamp')
-                for name, sql in Storage._sql.items()
+                for name, sql in Storage._raw_sql.items()
             }
             partial_statements = [
                 (name, sql.format(table=self._table_name,
@@ -295,35 +295,40 @@ class Storage(object):
             self._close(event='deleted')
 
     def __enter__(self):
-        self._lock.accessing(start=True)
-
-        close_timer = self._close_timer
-        if close_timer:
-            close_timer.cancel()
-
-        db = self._db or self._open()
+        self._lock.acquire()
         try:
-            cursor = db.cursor()
-        except (AttributeError, sqlite3.ProgrammingError):
-            db = self._open()
-            cursor = db.cursor()
-        cursor.arraysize = 100
-        return db, cursor
+            self._lock.accessing(start=True)
+            close_timer = self._close_timer
+            if close_timer:
+                close_timer.cancel()
+                self._close_timer = None
+
+            db = self._db or self._open()
+            try:
+                cursor = db.cursor()
+            except (AttributeError, sqlite3.ProgrammingError):
+                db = self._open()
+                cursor = db.cursor()
+            cursor.arraysize = 100
+            return db, cursor
+        except Exception:
+            self._lock.accessing(done=True)
+            self._lock.release()
+            raise
 
     def __exit__(self, exc_type=None, exc_val=None, exc_tb=None):
-        close_timer = self._close_timer
-        if close_timer:
-            close_timer.cancel()
+        try:
+            self._lock.accessing(done=True)
+            close_timer = self._close_timer
+            if close_timer:
+                close_timer.cancel()
+                self._close_timer = None
 
-        if self._lock.accessing(done=True) or self._lock.waiting():
-            return
-
-        with self._lock as locked:
-            if locked or self._close_timer:
-                return
             close_timer = Timer(5, self._close)
             close_timer.start()
             self._close_timer = close_timer
+        finally:
+            self._lock.release()
 
     def _open(self):
         table_queries = []
@@ -372,7 +377,7 @@ class Storage(object):
             return None
 
         queries = [
-            'PRAGMA busy_timeout = 1000;',
+            'PRAGMA busy_timeout = 10000;',
             'PRAGMA read_uncommitted = TRUE;',
             'PRAGMA secure_delete = FALSE;',
             # 'PRAGMA synchronous = OFF;',
@@ -409,65 +414,69 @@ class Storage(object):
         return db
 
     def _close(self, commit=False, event=None):
-        close_timer = self._close_timer
-        if close_timer:
-            close_timer.cancel()
+        with self._lock:
+            close_timer = self._close_timer
+            if close_timer:
+                close_timer.cancel()
+                self._close_timer = None
 
-        if self._lock.accessing() or self._lock.waiting():
-            return False
+            if not event and self._lock.accessing():
+                return False
 
-        db = self._db
-        if not db:
-            if self._close_actions:
-                db = self._open()
-            else:
-                return None
+            db = self._db
+            if not db:
+                if self._close_actions:
+                    db = self._open()
+                else:
+                    return None
 
-        if event or self._close_actions:
-            if not event:
-                queries = (
-                    'BEGIN IMMEDIATE;',
-                    self._set_many(items=None, defer=True, flush=True),
-                    'COMMIT;',
-                    'BEGIN IMMEDIATE;',
-                    self._optimize_item_count(defer=True),
-                    self._optimize_file_size(defer=True, db=db),
-                    'COMMIT;',
-                    'VACUUM;',
-                )
-            elif self._close_actions:
-                queries = (
-                    'BEGIN IMMEDIATE;',
-                    self._set_many(items=None, defer=True, flush=True),
-                    'COMMIT;',
-                    'BEGIN IMMEDIATE;',
-                    self._sql['prune_invalid'],
-                    self._optimize_item_count(defer=True),
-                    self._optimize_file_size(defer=True, db=db),
-                    'COMMIT;',
-                    'VACUUM;',
-                    'PRAGMA optimize;',
-                )
-            else:
-                queries = (
-                    'BEGIN IMMEDIATE;',
-                    self._sql['prune_invalid'],
-                    'COMMIT;',
-                    'VACUUM;',
-                    'PRAGMA optimize;',
-                )
-            self._execute(db.cursor(), queries)
+            if event or self._close_actions:
+                if not event:
+                    queries = (
+                        'BEGIN IMMEDIATE;',
+                        self._set_many(items=None, defer=True, flush=True),
+                        'COMMIT;',
+                        'BEGIN IMMEDIATE;',
+                        self._optimize_item_count(defer=True),
+                        self._optimize_file_size(defer=True, db=db),
+                        'COMMIT;',
+                        'VACUUM;',
+                    )
+                elif self._close_actions:
+                    queries = (
+                        'BEGIN IMMEDIATE;',
+                        self._set_many(items=None, defer=True, flush=True),
+                        'COMMIT;',
+                        'BEGIN IMMEDIATE;',
+                        self._sql['prune_invalid'],
+                        self._optimize_item_count(defer=True),
+                        self._optimize_file_size(defer=True, db=db),
+                        'COMMIT;',
+                        'VACUUM;',
+                        'PRAGMA optimize;',
+                    )
+                else:
+                    queries = (
+                        'BEGIN IMMEDIATE;',
+                        self._sql['prune_invalid'],
+                        'COMMIT;',
+                        'VACUUM;',
+                        'PRAGMA optimize;',
+                    )
+                self._execute(db.cursor(), queries)
 
-        # Not needed if using db as a context manager
-        if commit:
-            db.commit()
+            # Not needed if using db as a context manager
+            if commit:
+                db.commit()
 
-        if event:
-            db.close()
-            self._db = None
-        self._close_actions = False
-        self._close_timer = None
-        return True
+            if event:
+                try:
+                    db.close()
+                except Exception:
+                    pass
+                self._db = None
+            self._close_actions = False
+            return True
 
     def _execute(self, cursor, queries, values=(), many=False, script=False):
         result = []
@@ -481,59 +490,64 @@ class Storage(object):
         else:
             queries = (queries,)
 
-        for query in queries:
-            if not query:
-                continue
-            if isinstance(query, tuple):
-                query, _values, _many = query
-            else:
-                _many = many
-                _values = values
+        with self._lock:
+            for query in queries:
+                if not query:
+                    continue
+                if isinstance(query, tuple):
+                    query, _values, _many = query
+                else:
+                    _many = many
+                    _values = values
 
-            # Retry DB operation 3 times in case DB is locked or busy
-            abort = False
-            for attempt in range(1, 4):
-                try:
-                    if _many:
-                        result = cursor.executemany(query, _values)
-                    elif script:
-                        result = cursor.executescript(query)
-                    else:
-                        result = cursor.execute(query, _values)
-                    break
-                except Exception as exc:
-                    if isinstance(exc, sqlite3.OperationalError):
-                        pass
-                    elif isinstance(exc, (sqlite3.InterfaceError, KeyError)):
-                        cursor = self._db.cursor()
-                    else:
-                        abort = True
+                # Retry DB operation 3 times in case DB is locked or busy
+                abort = False
+                for attempt in range(1, 4):
+                    try:
+                        if _many:
+                            result = cursor.executemany(query, _values)
+                        elif script:
+                            result = cursor.executescript(query)
+                        else:
+                            result = cursor.execute(query, _values)
+                        break
+                    except Exception as exc:
+                        if isinstance(exc, sqlite3.OperationalError):
+                            pass
+                        elif isinstance(exc, (sqlite3.InterfaceError, KeyError)):
+                            if self._db:
+                                try:
+                                    cursor = self._db.cursor()
+                                except Exception:
+                                    pass
+                        else:
+                            abort = True
 
-                    if abort or attempt >= 3:
-                        abort = True
-                        log_level = logging.ERROR
-                        status = 'Failed'
-                    else:
-                        log_level = logging.WARNING
-                        status = 'Retry'
-                    self.log.log(
-                        level=log_level,
-                        msg=('{status} - Attempt {attempt} of 3',
-                             'Query:  {query!r}',
-                             'Values: {values!r}'),
-                        exc_info=True,
-                        status=status,
-                        attempt=attempt,
-                        query=query,
-                        values=values,
-                    )
+                        if abort or attempt >= 3:
+                            abort = True
+                            log_level = logging.ERROR
+                            status = 'Failed'
+                        else:
+                            log_level = logging.WARNING
+                            status = 'Retry'
+                        self.log.log(
+                            level=log_level,
+                            msg=('{status} - Attempt {attempt} of 3',
+                                 'Query:  {query!r}',
+                                 'Values: {values!r}'),
+                            exc_info=True,
+                            status=status,
+                            attempt=attempt,
+                            query=query,
+                            values=values,
+                        )
+                    if abort:
+                        break
+                    time.sleep(0.1)
+                else:
+                    abort = True
                 if abort:
                     break
-                time.sleep(0.1)
-            else:
-                abort = True
-            if abort:
-                break
         return result
 
     def _optimize_file_size(self, defer=False, db=None):
@@ -601,198 +615,204 @@ class Storage(object):
         return None
 
     def _set(self, item_id, item, defer=False, flush=False):
-        memory_store = self._memory_store
-        if memory_store is not None:
-            key = to_str(item_id)
-            if defer:
-                memory_store[key] = (
-                    item_id,
-                    since_epoch(),
-                    item,
-                )
-                self._close_actions = True
-                return None
-            if flush:
-                memory_store.clear()
-                return False
-            if memory_store:
-                memory_store[key] = (
-                    item_id,
-                    since_epoch(),
-                    item,
-                )
-                return self._set_many(items=None)
-
-        with self as (db, cursor), db:
-            self._execute(
-                cursor,
-                self._sql['set'],
-                self._encode(item_id, item),
-            )
-        return True
-
-    def _set_many(self, items, flatten=False, defer=False, flush=False):
-        memory_store = self._memory_store
-        if memory_store is not None:
-            if defer and not flush:
-                now = since_epoch()
-                memory_store.update({
-                    to_str(item_id): (
+        with self._lock:
+            memory_store = self._memory_store
+            if memory_store is not None:
+                key = to_str(item_id)
+                if defer:
+                    memory_store[key] = (
                         item_id,
-                        now,
+                        since_epoch(),
                         item,
                     )
-                    for item_id, item in items.items()
-                })
-                self._close_actions = True
-                return None
-            if flush and not defer:
+                    self._close_actions = True
+                    return None
+                if flush:
+                    memory_store.clear()
+                    return False
+                if memory_store:
+                    memory_store[key] = (
+                        item_id,
+                        since_epoch(),
+                        item,
+                    )
+                    return self._set_many(items=None)
+
+            with self as (db, cursor), db:
+                self._execute(
+                    cursor,
+                    self._sql['set'],
+                    self._encode(item_id, item),
+                )
+            return True
+
+    def _set_many(self, items, flatten=False, defer=False, flush=False):
+        with self._lock:
+            memory_store = self._memory_store
+            if memory_store is not None:
+                if defer and not flush:
+                    now = since_epoch()
+                    memory_store.update({
+                        to_str(item_id): (
+                            item_id,
+                            now,
+                            item,
+                        )
+                        for item_id, item in items.items()
+                    })
+                    self._close_actions = True
+                    return None
+                if flush and not defer:
+                    memory_store.clear()
+                    return False
+                if memory_store:
+                    flush = True
+
+            now = since_epoch()
+            values = []
+
+            if flatten:
+                num_item = 0
+                if items:
+                    values.extend([
+                        part
+                        for item_id, item in items.items()
+                        for part in self._encode(item_id, item, now)
+                    ])
+                    num_item += len(items)
+                if memory_store:
+                    values.extend([
+                        part
+                        for item_id, timestamp, item in memory_store.values()
+                        for part in self._encode(item_id, item, timestamp)
+                    ])
+                    num_item += len(memory_store)
+                query = self._sql['set_flat'].format(
+                    '(?,?,?,?),' * (num_item - 1) + '(?,?,?,?)'
+                )
+                many = False
+            else:
+                if items:
+                    values.extend([
+                        self._encode(item_id, item, now)
+                        for item_id, item in items.items()
+                    ])
+                if memory_store:
+                    values.extend([
+                        self._encode(item_id, item, timestamp)
+                        for item_id, timestamp, item in memory_store.values()
+                    ])
+                query = self._sql['set']
+                many = True
+
+            if flush and memory_store:
                 memory_store.clear()
-                return False
-            if memory_store:
-                flush = True
 
-        now = since_epoch()
-        values = []
+            if values:
+                if defer:
+                    return query, values, many
 
-        if flatten:
-            num_item = 0
-            if items:
-                values.extend([
-                    part
-                    for item_id, item in items.items()
-                    for part in self._encode(item_id, item, now)
-                ])
-                num_item += len(items)
-            if memory_store:
-                values.extend([
-                    part
-                    for item_id, timestamp, item in memory_store.values()
-                    for part in self._encode(item_id, item, timestamp)
-                ])
-                num_item += len(memory_store)
-            query = self._sql['set_flat'].format(
-                '(?,?,?,?),' * (num_item - 1) + '(?,?,?,?)'
-            )
-            many = False
-        else:
-            if items:
-                values.extend([
-                    self._encode(item_id, item, now)
-                    for item_id, item in items.items()
-                ])
-            if memory_store:
-                values.extend([
-                    self._encode(item_id, item, timestamp)
-                    for item_id, timestamp, item in memory_store.values()
-                ])
-            query = self._sql['set']
-            many = True
+                with self as (db, cursor):
+                    self._execute(
+                        cursor,
+                        (
+                            'BEGIN IMMEDIATE;',
+                            (query, values, many),
+                            'COMMIT;',
+                        ),
+                    )
+                    self._close_actions = True
+            return None
 
-        if flush and memory_store:
-            memory_store.clear()
+    def _refresh(self, item_id, timestamp=None, defer=False):
+        with self._lock:
+            key = to_str(item_id)
+            if not timestamp:
+                timestamp = since_epoch()
 
-        if values:
-            if defer:
-                return query, values, many
+            memory_store = self._memory_store
+            if memory_store and key in memory_store:
+                if defer:
+                    item = memory_store[key]
+                    memory_store[key] = (
+                        item_id,
+                        timestamp,
+                        item[2],
+                    )
+                    self._close_actions = True
+                    return None
+                del memory_store[key]
 
+            values = (timestamp, key)
             with self as (db, cursor):
                 self._execute(
                     cursor,
                     (
                         'BEGIN IMMEDIATE;',
-                        (query, values, many),
+                        (self._sql['refresh'], values, False),
                         'COMMIT;',
                     ),
                 )
-                self._close_actions = True
-        return None
-
-    def _refresh(self, item_id, timestamp=None, defer=False):
-        key = to_str(item_id)
-        if not timestamp:
-            timestamp = since_epoch()
-
-        memory_store = self._memory_store
-        if memory_store and key in memory_store:
-            if defer:
-                item = memory_store[key]
-                memory_store[key] = (
-                    item_id,
-                    timestamp,
-                    item[2],
-                )
-                self._close_actions = True
-                return None
-            del memory_store[key]
-
-        values = (timestamp, key)
-        with self as (db, cursor):
-            self._execute(
-                cursor,
-                (
-                    'BEGIN IMMEDIATE;',
-                    (self._sql['refresh'], values, False),
-                    'COMMIT;',
-                ),
-            )
-        return True
+            return True
 
     def _update(self, item_id, item, timestamp=None, defer=False):
-        key = to_str(item_id)
-        if not timestamp:
-            timestamp = since_epoch()
+        with self._lock:
+            key = to_str(item_id)
+            if not timestamp:
+                timestamp = since_epoch()
 
-        memory_store = self._memory_store
-        if memory_store and key in memory_store:
-            if defer:
-                memory_store[key] = (
-                    item_id,
-                    timestamp,
-                    item,
+            memory_store = self._memory_store
+            if memory_store and key in memory_store:
+                if defer:
+                    memory_store[key] = (
+                        item_id,
+                        timestamp,
+                        item,
+                    )
+                    self._close_actions = True
+                    return None
+                del memory_store[key]
+
+            values = self._encode(item_id, item, timestamp, for_update=True)
+            with self as (db, cursor):
+                self._execute(
+                    cursor,
+                    (
+                        'BEGIN IMMEDIATE;',
+                        (self._sql['update'], values, False),
+                        'COMMIT;',
+                    ),
                 )
-                self._close_actions = True
-                return None
-            del memory_store[key]
-
-        values = self._encode(item_id, item, timestamp, for_update=True)
-        with self as (db, cursor):
-            self._execute(
-                cursor,
-                (
-                    'BEGIN IMMEDIATE;',
-                    (self._sql['update'], values, False),
-                    'COMMIT;',
-                ),
-            )
-        return True
+            return True
 
     def clear(self, defer=False):
-        memory_store = self._memory_store
-        if memory_store:
-            memory_store.clear()
+        with self._lock:
+            memory_store = self._memory_store
+            if memory_store:
+                memory_store.clear()
 
-        query = self._sql['clear']
-        if defer:
-            return query
+            query = self._sql['clear']
+            if defer:
+                return query
 
-        with self as (db, cursor), db:
-            self._execute(
-                cursor,
-                query,
-            )
-            self._close_actions = True
-        return None
+            with self as (db, cursor), db:
+                self._execute(
+                    cursor,
+                    query,
+                )
+                self._close_actions = True
+            return None
 
     def is_empty(self):
-        with self as (db, cursor):
-            result = self._execute(cursor, self._sql['is_empty'])
-            for item in result:
-                is_empty = item[0] == 0
-                break
-            else:
-                is_empty = True
-        return is_empty
+        with self._lock:
+            with self as (db, cursor):
+                result = self._execute(cursor, self._sql['is_empty'])
+                for item in result:
+                    is_empty = item[0] == 0
+                    break
+                else:
+                    is_empty = True
+            return is_empty
 
     @staticmethod
     def _decode(obj, process=None, item=None):
@@ -826,174 +846,178 @@ class Storage(object):
              as_dict=False,
              with_timestamp=False):
         key = to_str(item_id)
-        memory_store = self._memory_store
-        if memory_store and key in memory_store:
-            item = memory_store[key]
-            item = (
-                item_id,
-                item[1],  # timestamp from memory store item
-                item[2],  # object from memory store item
-                None,
-            )
-        else:
-            with self as (db, cursor):
-                result = self._execute(
-                    cursor,
-                    self._sql['get'],
-                    (key,),
+        with self._lock:
+            memory_store = self._memory_store
+            if memory_store and key in memory_store:
+                item = memory_store[key]
+                item = (
+                    item_id,
+                    item[1],  # timestamp from memory store item
+                    item[2],  # object from memory store item
+                    None,
                 )
-                item = result.fetchone() if result else None
-                if not item or not all(item):
-                    return None
+            else:
+                with self as (db, cursor):
+                    result = self._execute(
+                        cursor,
+                        self._sql['get'],
+                        (key,),
+                    )
+                    item = result.fetchone() if result else None
+                    if not item or not all(item):
+                        return None
 
-        cut_off = since_epoch() - seconds if seconds else 0
-        if not cut_off or item[1] >= cut_off:
-            if as_dict:
-                output = {
-                    'item_id': item_id,
-                    'age': since_epoch() - item[1],
-                    'value': self._decode(item[2], process, item),
-                }
-                if with_timestamp:
-                    output['timestamp'] = item[1]
-                return output
-            return self._decode(item[2], process, item)
-        return None
+            cut_off = since_epoch() - seconds if seconds else 0
+            if not cut_off or item[1] >= cut_off:
+                if as_dict:
+                    output = {
+                        'item_id': item_id,
+                        'age': since_epoch() - item[1],
+                        'value': self._decode(item[2], process, item),
+                    }
+                    if with_timestamp:
+                        output['timestamp'] = item[1]
+                    return output
+                return self._decode(item[2], process, item)
+            return None
 
     def _get_by_ids(self, item_ids=(), oldest_first=True, limit=-1,
                     wildcard=False, seconds=None, process=None,
                     as_dict=False, values_only=True, excluding=None):
-        in_memory_result = None
-        result = None
+        with self._lock:
+            in_memory_result = None
+            result = None
 
-        if not item_ids:
-            if oldest_first:
-                query = self._sql['get_many']
-            else:
-                query = self._sql['get_many_desc']
-            query = query.format(limit)
-        elif wildcard:
-            if oldest_first:
-                query = self._sql['get_by_key_like']
-            else:
-                query = self._sql['get_by_key_like_desc']
-            query = query.format(limit)
-        else:
-            if excluding:
-                query = self._sql['get_by_key_excluding'].format(
-                    '?,' * (len(item_ids) - 1) + '?',
-                    '?,' * (len(excluding) - 1) + '?',
-                )
-                item_ids = tuple(item_ids) + tuple(excluding)
-            else:
-                memory_store = self._memory_store
-                if memory_store:
-                    in_memory_result = []
-                    _item_ids = []
-                    for item_id in item_ids:
-                        key = to_str(item_id)
-                        if key in memory_store:
-                            item = memory_store[key]
-                            in_memory_result.append((
-                                item_id,
-                                item[1],  # timestamp from memory store item
-                                item[2],  # object from memory store item
-                                None,
-                            ))
-                        else:
-                            _item_ids.append(item_id)
-                    item_ids = _item_ids
-
-                if item_ids:
-                    query = self._sql['get_by_key'].format(
-                        '?,' * (len(item_ids) - 1) + '?'
-                    )
-                    item_ids = tuple(map(to_str, item_ids))
+            if not item_ids:
+                if oldest_first:
+                    query = self._sql['get_many']
                 else:
-                    query = None
-
-        if query:
-            with self as (db, cursor):
-                result = self._execute(cursor, query, item_ids)
-                if result:
-                    result = result.fetchall()
-
-        if in_memory_result:
-            if result:
-                in_memory_result.extend(result)
-            result = in_memory_result
-
-        now = since_epoch()
-        cut_off = now - seconds if seconds else 0
-
-        if as_dict:
-            if values_only:
-                result = {
-                    item[0]: self._decode(item[2], process, item)
-                    for item in result if not cut_off or item[1] >= cut_off
-                }
+                    query = self._sql['get_many_desc']
+                query = query.format(limit)
+            elif wildcard:
+                if oldest_first:
+                    query = self._sql['get_by_key_like']
+                else:
+                    query = self._sql['get_by_key_like_desc']
+                query = query.format(limit)
             else:
-                result = {
-                    item[0]: {
-                        'age': now - item[1],
-                        'value': self._decode(item[2], process, item),
+                if excluding:
+                    query = self._sql['get_by_key_excluding'].format(
+                        '?,' * (len(item_ids) - 1) + '?',
+                        '?,' * (len(excluding) - 1) + '?',
+                    )
+                    item_ids = tuple(item_ids) + tuple(excluding)
+                else:
+                    memory_store = self._memory_store
+                    if memory_store:
+                        in_memory_result = []
+                        _item_ids = []
+                        for item_id in item_ids:
+                            key = to_str(item_id)
+                            if key in memory_store:
+                                item = memory_store[key]
+                                in_memory_result.append((
+                                    item_id,
+                                    item[1],  # timestamp from memory store item
+                                    item[2],  # object from memory store item
+                                    None,
+                                ))
+                            else:
+                                _item_ids.append(item_id)
+                        item_ids = _item_ids
+
+                    if item_ids:
+                        query = self._sql['get_by_key'].format(
+                            '?,' * (len(item_ids) - 1) + '?'
+                        )
+                        item_ids = tuple(map(to_str, item_ids))
+                    else:
+                        query = None
+
+            if query:
+                with self as (db, cursor):
+                    result = self._execute(cursor, query, item_ids)
+                    if result:
+                        result = result.fetchall()
+
+            if in_memory_result:
+                if result:
+                    in_memory_result.extend(result)
+                result = in_memory_result
+
+            now = since_epoch()
+            cut_off = now - seconds if seconds else 0
+
+            if as_dict:
+                if values_only:
+                    result = {
+                        item[0]: self._decode(item[2], process, item)
+                        for item in result if not cut_off or item[1] >= cut_off
                     }
+                else:
+                    result = {
+                        item[0]: {
+                            'age': now - item[1],
+                            'value': self._decode(item[2], process, item),
+                        }
+                        for item in result if not cut_off or item[1] >= cut_off
+                    }
+            elif values_only:
+                result = [
+                    self._decode(item[2], process, item)
                     for item in result if not cut_off or item[1] >= cut_off
-                }
-        elif values_only:
-            result = [
-                self._decode(item[2], process, item)
-                for item in result if not cut_off or item[1] >= cut_off
-            ]
-        else:
-            result = [
-                (item[0],
-                 fromtimestamp(item[1]),
-                 self._decode(item[2], process, item))
-                for item in result if not cut_off or item[1] >= cut_off
-            ]
-        return result
+                ]
+            else:
+                result = [
+                    (item[0],
+                     fromtimestamp(item[1]),
+                     self._decode(item[2], process, item))
+                    for item in result if not cut_off or item[1] >= cut_off
+                ]
+            return result
 
     def _remove(self, item_id):
-        key = to_str(item_id)
-        memory_store = self._memory_store
-        if memory_store and key in memory_store:
-            del memory_store[key]
+        with self._lock:
+            key = to_str(item_id)
+            memory_store = self._memory_store
+            if memory_store and key in memory_store:
+                del memory_store[key]
 
-        with self as (db, cursor):
-            self._execute(
-                cursor,
-                (
-                    'BEGIN IMMEDIATE;',
-                    (self._sql['remove'], (key,), False),
-                    'COMMIT;',
-                ),
-            )
-            self._close_actions = True
-        return True
+            with self as (db, cursor):
+                self._execute(
+                    cursor,
+                    (
+                        'BEGIN IMMEDIATE;',
+                        (self._sql['remove'], (key,), False),
+                        'COMMIT;',
+                    ),
+                )
+                self._close_actions = True
+            return True
 
     def _remove_many(self, item_ids):
-        memory_store = self._memory_store
-        if memory_store:
-            _item_ids = []
-            for item_id in item_ids:
-                key = to_str(item_id)
-                if key in memory_store:
-                    del memory_store[key]
-                else:
-                    _item_ids.append(item_id)
-            item_ids = _item_ids
+        with self._lock:
+            memory_store = self._memory_store
+            if memory_store:
+                _item_ids = []
+                for item_id in item_ids:
+                    key = to_str(item_id)
+                    if key in memory_store:
+                        del memory_store[key]
+                    else:
+                        _item_ids.append(item_id)
+                item_ids = _item_ids
 
-        num_ids = len(item_ids)
-        query = self._sql['remove_by_key'].format('?,' * (num_ids - 1) + '?')
-        with self as (db, cursor):
-            self._execute(
-                cursor,
-                (
-                    'BEGIN IMMEDIATE;',
-                    (query, tuple(map(to_str, item_ids)), False),
-                    'COMMIT;',
-                ),
-            )
-            self._close_actions = True
-        return True
+            num_ids = len(item_ids)
+            query = self._sql['remove_by_key'].format('?,' * (num_ids - 1) + '?')
+            with self as (db, cursor):
+                self._execute(
+                    cursor,
+                    (
+                        'BEGIN IMMEDIATE;',
+                        (query, tuple(map(to_str, item_ids)), False),
+                        'COMMIT;',
+                    ),
+                )
+                self._close_actions = True
+            return True
