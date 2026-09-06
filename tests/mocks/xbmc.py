@@ -48,6 +48,17 @@ def getCondVisibility(condition):
     return False
 
 
+_SYSTEM_STRINGS = {
+    14076: 'Add to favourites',
+    13000: 'OK',
+    222: 'Cancel',
+}
+
+
+def getLocalizedString(string_id):
+    return _SYSTEM_STRINGS.get(int(string_id), str(string_id))
+
+
 _TEMP_BASE = tempfile.gettempdir()
 
 

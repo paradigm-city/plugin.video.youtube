@@ -2,7 +2,7 @@
 minversion = "7.0"
 testpaths = ["tests"]
 pythonpath = ["resources/lib"]
-addopts = "-ra --strict-markers"
+addopts = "-ra --strict-markers -m 'not live'"
 markers = [
     "concurrency: Concurrency and multi-threading stress tests",
     "live: Live network probes against YouTube (opt-in)",
@@ -10,6 +10,7 @@ markers = [
 filterwarnings = [
     "ignore::DeprecationWarning",
     "ignore::ResourceWarning",
+    "ignore::urllib3.exceptions.InsecureRequestWarning",
 ]
 
 
