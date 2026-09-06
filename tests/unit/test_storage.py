@@ -2,7 +2,6 @@
 """
 Unit tests for SQLite Storage and DataCache.
 """
-import os
 import shutil
 import tempfile
 import pytest

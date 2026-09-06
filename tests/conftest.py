@@ -15,7 +15,8 @@ if RESOURCES_LIB not in sys.path:
     sys.path.insert(0, RESOURCES_LIB)
 
 # 2. Preemptively register mocks in sys.modules BEFORE any addon imports occur
-from tests.mocks import xbmc, xbmcaddon, xbmcgui, xbmcplugin, xbmcvfs
+from tests.mocks import xbmc, xbmcaddon, xbmcgui, xbmcplugin, xbmcvfs  # noqa: E402
+
 
 sys.modules['xbmc'] = xbmc
 sys.modules['xbmcaddon'] = xbmcaddon

@@ -4,7 +4,6 @@ Mock implementation of Kodi's xbmc C-module.
 """
 import json
 import os
-import sys
 import tempfile
 import time
 

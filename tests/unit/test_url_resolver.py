@@ -176,3 +176,25 @@ def test_common_resolver_follows_redirects(common_resolver, monkeypatch):
 
     resolved = common_resolver.resolve(source_url, urlsplit(source_url))
     assert resolved == destination_url
+
+
+# =========================================================================
+# UrlResolver wrapper
+# =========================================================================
+
+def test_url_resolver_wrapper_delegates_and_resolves(mock_context):
+    resolver = UrlResolver(mock_context)
+    wrapper_url = (
+        'https://www.youtube.com/supported_browsers'
+        '?next_url=https%3A%2F%2Fwww.youtube.com%2Fwatch%3Fv%3DdQw4w9WgXcQ'
+        '&feature=youtu.be'
+    )
+    resolved = resolver.resolve(wrapper_url)
+    resolved_comp = urlsplit(resolved)
+    params = dict(parse_qsl(resolved_comp.query))
+
+    assert resolved_comp.scheme == 'https'
+    assert resolved_comp.netloc == 'www.youtube.com'
+    assert resolved_comp.path == '/watch'
+    assert params.get('v') == 'dQw4w9WgXcQ'
+
