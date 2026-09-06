@@ -1,0 +1,118 @@
+{
+  "playabilityStatus": {
+    "status": "OK",
+    "playableInEmbed": true
+  },
+  "videoDetails": {
+    "videoId": "dQw4w9WgXcQ",
+    "title": "Rick Astley - Never Gonna Give You Up",
+    "lengthSeconds": "213",
+    "channelId": "UCuAXFkgsw1L7xaCfnd5JJOw",
+    "author": "Rick Astley"
+  },
+  "streamingData": {
+    "expiresInSeconds": "21540",
+    "formats": [
+      {
+        "itag": 18,
+        "url": "https://rr1---sn-test.googlevideo.com/videoplayback?itag=18",
+        "mimeType": "video/mp4; codecs=\"avc1.42001E, mp4a.40.2\"",
+        "bitrate": 622438,
+        "width": 640,
+        "height": 360,
+        "lastModified": "1675200000000000",
+        "quality": "medium",
+        "fps": 25,
+        "qualityLabel": "360p",
+        "audioQuality": "AUDIO_QUALITY_LOW",
+        "approxDurationMs": "213000"
+      }
+    ],
+    "adaptiveFormats": [
+      {
+        "itag": 137,
+        "url": "https://rr1---sn-test.googlevideo.com/videoplayback?itag=137",
+        "mimeType": "video/mp4; codecs=\"avc1.640028\"",
+        "bitrate": 4182902,
+        "width": 1920,
+        "height": 1080,
+        "lastModified": "1675200000000000",
+        "quality": "hd1080",
+        "fps": 25,
+        "qualityLabel": "1080p",
+        "approxDurationMs": "213000"
+      },
+      {
+        "itag": 248,
+        "url": "https://rr1---sn-test.googlevideo.com/videoplayback?itag=248",
+        "mimeType": "video/webm; codecs=\"vp9\"",
+        "bitrate": 2650000,
+        "width": 1920,
+        "height": 1080,
+        "lastModified": "1675200000000000",
+        "quality": "hd1080",
+        "fps": 25,
+        "qualityLabel": "1080p",
+        "approxDurationMs": "213000"
+      },
+      {
+        "itag": 136,
+        "url": "https://rr1---sn-test.googlevideo.com/videoplayback?itag=136",
+        "mimeType": "video/mp4; codecs=\"avc1.4d401f\"",
+        "bitrate": 1850000,
+        "width": 1280,
+        "height": 720,
+        "lastModified": "1675200000000000",
+        "quality": "hd720",
+        "fps": 25,
+        "qualityLabel": "720p",
+        "approxDurationMs": "213000"
+      },
+      {
+        "itag": 140,
+        "url": "https://rr1---sn-test.googlevideo.com/videoplayback?itag=140",
+        "mimeType": "audio/mp4; codecs=\"mp4a.40.2\"",
+        "bitrate": 129759,
+        "quality": "tiny",
+        "audioQuality": "AUDIO_QUALITY_MEDIUM",
+        "approxDurationMs": "213000",
+        "audioSampleRate": "44100",
+        "audioChannels": 2
+      },
+      {
+        "itag": 251,
+        "url": "https://rr1---sn-test.googlevideo.com/videoplayback?itag=251",
+        "mimeType": "audio/webm; codecs=\"opus\"",
+        "bitrate": 150000,
+        "quality": "tiny",
+        "audioQuality": "AUDIO_QUALITY_MEDIUM",
+        "approxDurationMs": "213000",
+        "audioSampleRate": "48000",
+        "audioChannels": 2
+      }
+    ]
+  },
+  "captions": {
+    "playerCaptionsTracklistRenderer": {
+      "captionTracks": [
+        {
+          "baseUrl": "https://www.youtube.com/api/timedtext?v=dQw4w9WgXcQ&lang=en",
+          "name": {
+            "simpleText": "English"
+          },
+          "vssId": ".en",
+          "languageCode": "en"
+        },
+        {
+          "baseUrl": "https://www.youtube.com/api/timedtext?v=dQw4w9WgXcQ&lang=de",
+          "name": {
+            "simpleText": "German"
+          },
+          "vssId": ".de",
+          "languageCode": "de"
+        }
+      ]
+    }
+  }
+}
+

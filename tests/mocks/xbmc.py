@@ -89,8 +89,9 @@ def executeJSONRPC(json_string):
 
 
 
-def getLanguage(format_type=None, region=False):
+def getLanguage(format=None, region=False):
     return 'English'
+
 
 
 def convertLanguage(language, code_format):
