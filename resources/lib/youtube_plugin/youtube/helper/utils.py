@@ -1130,9 +1130,6 @@ def update_video_items(provider, context, video_id_dict,
                 cxm_bookmark_channel
                 if channel_id else
                 None,
-                # menu_items.bookmark_add(context, media_item)
-                # if not in_bookmarks_list else
-                # None,
                 cxm_separator,
                 # General Kodi playback and item actions
                 cxm_play_with_subtitles,

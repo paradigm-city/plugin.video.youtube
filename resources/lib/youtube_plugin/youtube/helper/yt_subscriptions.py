@@ -23,6 +23,12 @@ def _process_list(provider, context, client):
     if not json_data:
         return []
 
+    for item in json_data.get('items') or ():
+        if isinstance(item, dict):
+            ch_id = (item.get('snippet') or {}).get('resourceId', {}).get('channelId')
+            if ch_id:
+                client.set_subscription_status(ch_id, True)
+
     result = v3.response_to_items(provider, context, json_data)
     options = {
         provider.CONTENT_TYPE: {
@@ -73,6 +79,9 @@ def _process_remove(provider, context, client):
     channel_id = context.get_param(CHANNEL_ID)
     if not channel_id and li_channel_id:
         channel_id = li_channel_id
+
+    if not channel_id and subscription_id and subscription_id.startswith('UC'):
+        channel_id = subscription_id
 
     if subscription_id:
         success = client.unsubscribe(subscription_id)
