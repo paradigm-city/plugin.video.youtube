@@ -1,0 +1,52 @@
+{
+  "kind": "youtube#videoListResponse",
+  "etag": "etag_test_123",
+  "items": [
+    {
+      "kind": "youtube#video",
+      "etag": "item_etag_123",
+      "id": "dQw4w9WgXcQ",
+      "snippet": {
+        "publishedAt": "2009-10-25T06:57:33Z",
+        "channelId": "UCuAXFkgsw1L7xaCfnd5JJOw",
+        "title": "Rick Astley - Never Gonna Give You Up (Official Music Video)",
+        "description": "The official video for Never Gonna Give You Up by Rick Astley.",
+        "thumbnails": {
+          "default": {
+            "url": "https://i.ytimg.com/vi/dQw4w9WgXcQ/default.jpg",
+            "width": 120,
+            "height": 90
+          },
+          "high": {
+            "url": "https://i.ytimg.com/vi/dQw4w9WgXcQ/hqdefault.jpg",
+            "width": 480,
+            "height": 360
+          }
+        },
+        "channelTitle": "Rick Astley",
+        "tags": ["Rick Astley", "Never Gonna Give You Up", "Pop"],
+        "categoryId": "10",
+        "liveBroadcastContent": "none"
+      },
+      "contentDetails": {
+        "duration": "PT3M33S",
+        "dimension": "2d",
+        "definition": "hd",
+        "caption": "true",
+        "licensedContent": true,
+        "projection": "rectangular"
+      },
+      "statistics": {
+        "viewCount": "1500000000",
+        "likeCount": "16000000",
+        "favoriteCount": "0",
+        "commentCount": "2300000"
+      }
+    }
+  ],
+  "pageInfo": {
+    "totalResults": 1,
+    "resultsPerPage": 1
+  }
+}
+

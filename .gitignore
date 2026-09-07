@@ -37,3 +37,5 @@ core.po
 todo/implementation_plan.md
 todo/project_analysis_and_action_plan.md
 todo/walkthrough.md
+.pytest_cache/
+

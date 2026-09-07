@@ -1,0 +1,42 @@
+{
+  "kind": "youtube#SubscriptionListResponse",
+  "etag": "sub_etag_123",
+  "nextPageToken": "",
+  "pageInfo": {
+    "totalResults": 2,
+    "resultsPerPage": 50
+  },
+  "items": [
+    {
+      "kind": "youtube#subscription",
+      "etag": "sub_item_1",
+      "id": "sub_id_1",
+      "snippet": {
+        "publishedAt": "2020-01-01T00:00:00Z",
+        "title": "Google",
+        "description": "Google Official Channel",
+        "resourceId": {
+          "kind": "youtube#channel",
+          "channelId": "UC_x5XG1OV2P6uZZ5FSM9Ttw"
+        },
+        "channelId": "UC_user_channel_id"
+      }
+    },
+    {
+      "kind": "youtube#subscription",
+      "etag": "sub_item_2",
+      "id": "sub_id_2",
+      "snippet": {
+        "publishedAt": "2020-02-01T00:00:00Z",
+        "title": "Rick Astley",
+        "description": "Official Rick Astley Channel",
+        "resourceId": {
+          "kind": "youtube#channel",
+          "channelId": "UCuAXFkgsw1L7xaCfnd5JJOw"
+        },
+        "channelId": "UC_user_channel_id"
+      }
+    }
+  ]
+}
+

@@ -1,0 +1,35 @@
+[tool.pytest.ini_options]
+minversion = "7.0"
+testpaths = ["tests"]
+pythonpath = ["resources/lib"]
+addopts = "-ra --strict-markers -m 'not live'"
+markers = [
+    "concurrency: Concurrency and multi-threading stress tests",
+    "live: Live network probes against YouTube (opt-in)",
+]
+filterwarnings = [
+    "ignore::DeprecationWarning",
+    "ignore::ResourceWarning",
+    "ignore::urllib3.exceptions.InsecureRequestWarning",
+]
+
+
+[tool.coverage.run]
+source = ["resources/lib"]
+branch = true
+omit = [
+    "*/compatibility/*",
+    "*/__init__.py",
+]
+
+[tool.coverage.report]
+show_missing = true
+skip_covered = true
+
+[tool.ruff]
+line-length = 120
+target-version = "py38"
+
+[tool.ruff.lint]
+select = ["E", "F", "W"]
+ignore = ["E501"]

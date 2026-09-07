@@ -716,6 +716,9 @@ class AbstractContext(object):
     def get_settings(self, refresh=False):
         raise NotImplementedError()
 
+    def settings(self, refresh=False):
+        return self.get_settings(refresh=refresh)
+
     def localize(self, text_id, args=None, default_text=None):
         raise NotImplementedError()
 

@@ -1,0 +1,55 @@
+{
+  "kind": "youtube#searchListResponse",
+  "etag": "search_etag_123",
+  "nextPageToken": "CDIQAA",
+  "regionCode": "US",
+  "pageInfo": {
+    "totalResults": 1000000,
+    "resultsPerPage": 2
+  },
+  "items": [
+    {
+      "kind": "youtube#searchResult",
+      "etag": "search_item_1",
+      "id": {
+        "kind": "youtube#video",
+        "videoId": "dQw4w9WgXcQ"
+      },
+      "snippet": {
+        "publishedAt": "2009-10-25T06:57:33Z",
+        "channelId": "UCuAXFkgsw1L7xaCfnd5JJOw",
+        "title": "Rick Astley - Never Gonna Give You Up",
+        "description": "Never Gonna Give You Up description...",
+        "thumbnails": {
+          "default": {
+            "url": "https://i.ytimg.com/vi/dQw4w9WgXcQ/default.jpg"
+          }
+        },
+        "channelTitle": "Rick Astley",
+        "liveBroadcastContent": "none"
+      }
+    },
+    {
+      "kind": "youtube#searchResult",
+      "etag": "search_item_2",
+      "id": {
+        "kind": "youtube#channel",
+        "channelId": "UC_x5XG1OV2P6uZZ5FSM9Ttw"
+      },
+      "snippet": {
+        "publishedAt": "2005-09-19T00:00:00Z",
+        "channelId": "UC_x5XG1OV2P6uZZ5FSM9Ttw",
+        "title": "Google",
+        "description": "Experience Google technologies...",
+        "thumbnails": {
+          "default": {
+            "url": "https://yt3.ggpht.com/google_thumb.jpg"
+          }
+        },
+        "channelTitle": "Google",
+        "liveBroadcastContent": "none"
+      }
+    }
+  ]
+}
+
