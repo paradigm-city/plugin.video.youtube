@@ -1,0 +1,37 @@
+{
+  "kind": "youtube#videoCategoryListResponse",
+  "etag": "etag_categories_test",
+  "items": [
+    {
+      "kind": "youtube#videoCategory",
+      "etag": "etag_cat_1",
+      "id": "1",
+      "snippet": {
+        "title": "Film & Animation",
+        "assignable": true,
+        "channelId": "UCBR8-60-B28hp2BmDPdntcQ"
+      }
+    },
+    {
+      "kind": "youtube#videoCategory",
+      "etag": "etag_cat_10",
+      "id": "10",
+      "snippet": {
+        "title": "Music",
+        "assignable": true,
+        "channelId": "UCBR8-60-B28hp2BmDPdntcQ"
+      }
+    },
+    {
+      "kind": "youtube#videoCategory",
+      "etag": "etag_cat_20",
+      "id": "20",
+      "snippet": {
+        "title": "Gaming",
+        "assignable": true,
+        "channelId": "UCBR8-60-B28hp2BmDPdntcQ"
+      }
+    }
+  ]
+}
+

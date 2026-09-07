@@ -1,0 +1,35 @@
+{
+  "kind": "youtube#commentThreadListResponse",
+  "etag": "etag_comments_test",
+  "nextPageToken": "NEXT_COMMENTS_PAGE",
+  "pageInfo": {
+    "totalResults": 1,
+    "resultsPerPage": 20
+  },
+  "items": [
+    {
+      "kind": "youtube#commentThread",
+      "etag": "etag_thread_1",
+      "id": "Ugz_TEST_COMMENT_THREAD_1",
+      "snippet": {
+        "videoId": "dQw4w9WgXcQ",
+        "topLevelComment": {
+          "kind": "youtube#comment",
+          "etag": "etag_top_comment",
+          "id": "Ugz_TEST_COMMENT_THREAD_1",
+          "snippet": {
+            "authorDisplayName": "Test User",
+            "authorProfileImageUrl": "https://yt3.ggpht.com/avatar.jpg",
+            "textDisplay": "Classic masterpiece!",
+            "likeCount": 4200,
+            "publishedAt": "2024-01-01T00:00:00Z"
+          }
+        },
+        "canReply": true,
+        "totalReplyCount": 5,
+        "isPublic": true
+      }
+    }
+  ]
+}
+
