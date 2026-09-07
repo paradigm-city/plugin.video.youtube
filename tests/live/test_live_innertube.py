@@ -7,6 +7,9 @@ import pytest
 from youtube_plugin.youtube.client.player_client import YouTubePlayerClient
 
 
+from youtube_plugin.youtube.youtube_exceptions import YouTubeException
+
+
 pytestmark = pytest.mark.live
 
 
@@ -14,7 +17,12 @@ def test_live_innertube_stream_extraction(mock_context):
     """Verify live Innertube player endpoint returns playable streams for public video."""
     client = YouTubePlayerClient(context=mock_context)
     # Using 'jNQXAC9IVRw' (first YouTube video 'Me at the zoo')
-    streams, item = client.load_stream_info('jNQXAC9IVRw')
+    try:
+        streams, item = client.load_stream_info('jNQXAC9IVRw')
+    except YouTubeException as exc:
+        if 'not a bot' in str(exc) or 'Sign in' in str(exc):
+            pytest.xfail(f"YouTube bot challenge triggered on unauthenticated IP: {exc}")
+        raise
 
     assert item is not None
     assert 'Me at the zoo' in item.get('snippet', {}).get('title', '')
@@ -32,7 +40,12 @@ def test_live_innertube_music_video_streams(mock_context):
     """Verify live Innertube returns stream data for music video without cipher crash."""
     client = YouTubePlayerClient(context=mock_context)
     # 'dQw4w9WgXcQ' (Rick Astley)
-    streams, item = client.load_stream_info('dQw4w9WgXcQ')
+    try:
+        streams, item = client.load_stream_info('dQw4w9WgXcQ')
+    except YouTubeException as exc:
+        if 'not a bot' in str(exc) or 'Sign in' in str(exc):
+            pytest.xfail(f"YouTube bot challenge triggered on unauthenticated IP: {exc}")
+        raise
 
     assert item is not None
     assert 'Rick Astley' in item.get('snippet', {}).get('title', '')
