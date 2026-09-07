@@ -1,0 +1,44 @@
+{
+  "kind": "youtube#playlistItemListResponse",
+  "etag": "etag_playlist_items_test",
+  "nextPageToken": "NEXT_PAGE_TOKEN_PLI",
+  "pageInfo": {
+    "totalResults": 2,
+    "resultsPerPage": 50
+  },
+  "items": [
+    {
+      "kind": "youtube#playlistItem",
+      "etag": "etag_item_1",
+      "id": "PLI_ITEM_ID_1",
+      "snippet": {
+        "publishedAt": "2024-01-01T12:05:00Z",
+        "channelId": "UC_TEST_CHANNEL_1",
+        "title": "Rick Astley - Never Gonna Give You Up",
+        "description": "Music video",
+        "position": 0,
+        "resourceId": {
+          "kind": "youtube#video",
+          "videoId": "dQw4w9WgXcQ"
+        }
+      }
+    },
+    {
+      "kind": "youtube#playlistItem",
+      "etag": "etag_item_2",
+      "id": "PLI_ITEM_ID_2",
+      "snippet": {
+        "publishedAt": "2024-01-01T12:10:00Z",
+        "channelId": "UC_TEST_CHANNEL_1",
+        "title": "Me at the zoo",
+        "description": "First video",
+        "position": 1,
+        "resourceId": {
+          "kind": "youtube#video",
+          "videoId": "jNQXAC9IVRw"
+        }
+      }
+    }
+  ]
+}
+

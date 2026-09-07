@@ -1,0 +1,61 @@
+{
+  "kind": "youtube#playlistListResponse",
+  "etag": "etag_playlists_test",
+  "pageInfo": {
+    "totalResults": 2,
+    "resultsPerPage": 50
+  },
+  "items": [
+    {
+      "kind": "youtube#playlist",
+      "etag": "etag_pl_1",
+      "id": "PL_TEST_PLAYLIST_1",
+      "snippet": {
+        "publishedAt": "2024-01-01T12:00:00Z",
+        "channelId": "UC_TEST_CHANNEL_1",
+        "title": "Favorite Music Tracks",
+        "description": "A curated collection of music tracks",
+        "thumbnails": {
+          "default": {
+            "url": "https://i.ytimg.com/vi/dQw4w9WgXcQ/default.jpg",
+            "width": 120,
+            "height": 90
+          }
+        },
+        "channelTitle": "Test Channel"
+      },
+      "status": {
+        "privacyStatus": "public"
+      },
+      "contentDetails": {
+        "itemCount": 12
+      }
+    },
+    {
+      "kind": "youtube#playlist",
+      "etag": "etag_pl_2",
+      "id": "PL_TEST_PLAYLIST_2",
+      "snippet": {
+        "publishedAt": "2024-01-02T15:00:00Z",
+        "channelId": "UC_TEST_CHANNEL_1",
+        "title": "Watch Later Archive",
+        "description": "Archived watch later videos",
+        "thumbnails": {
+          "default": {
+            "url": "https://i.ytimg.com/vi/jNQXAC9IVRw/default.jpg",
+            "width": 120,
+            "height": 90
+          }
+        },
+        "channelTitle": "Test Channel"
+      },
+      "status": {
+        "privacyStatus": "private"
+      },
+      "contentDetails": {
+        "itemCount": 5
+      }
+    }
+  ]
+}
+

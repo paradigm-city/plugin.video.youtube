@@ -1,0 +1,46 @@
+{
+  "kind": "youtube#channelListResponse",
+  "etag": "etag_channels_test",
+  "pageInfo": {
+    "totalResults": 1,
+    "resultsPerPage": 50
+  },
+  "items": [
+    {
+      "kind": "youtube#channel",
+      "etag": "etag_channel_item_1",
+      "id": "UC_x5XG1OV2P6uZZ5FSM9Ttw",
+      "snippet": {
+        "title": "Google Developers",
+        "description": "The Google Developers channel offers news and tech videos.",
+        "customUrl": "@googledevelopers",
+        "publishedAt": "2007-08-23T00:32:43Z",
+        "thumbnails": {
+          "default": {
+            "url": "https://yt3.ggpht.com/default.jpg"
+          }
+        }
+      },
+      "contentDetails": {
+        "relatedPlaylists": {
+          "likes": "",
+          "uploads": "UU_x5XG1OV2P6uZZ5FSM9Ttw"
+        }
+      },
+      "statistics": {
+        "viewCount": "250000000",
+        "subscriberCount": "2300000",
+        "hiddenSubscriberCount": false,
+        "videoCount": "6200"
+      },
+      "brandingSettings": {
+        "channel": {
+          "title": "Google Developers",
+          "description": "The Google Developers channel",
+          "keywords": "google android developer programming"
+        }
+      }
+    }
+  ]
+}
+
