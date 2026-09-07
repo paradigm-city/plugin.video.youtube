@@ -352,6 +352,7 @@ class TestSubscriptionActions:
     """Integration tests for subscriptions query, subscription, and unsubscription."""
 
     def test_get_my_subscriptions(self, requests_mock, logged_in_client):
+    def test_get_subscriptions_mine(self, requests_mock, logged_in_client):
         payload = load_v3_fixture('subscriptions_list.json')
         requests_mock.get(
             'https://www.googleapis.com/youtube/v3/subscriptions',
@@ -359,9 +360,21 @@ class TestSubscriptionActions:
         )
 
         result = logged_in_client.get_my_subscriptions()
+        result = logged_in_client.get_subscription('mine')
         assert result is not None
         assert len(result.get('items', [])) == 2
         assert requests_mock.last_request.qs['mine'] == ['true']
+
+    def test_get_subscriptions_channel(self, requests_mock, data_client):
+        payload = load_v3_fixture('subscriptions_list.json')
+        requests_mock.get(
+            'https://www.googleapis.com/youtube/v3/subscriptions',
+            json=payload,
+        )
+
+        result = data_client.get_subscription('UC_SOME_CHANNEL')
+        assert result is not None
+        assert 'channelId=UC_SOME_CHANNEL' in requests_mock.last_request.url
 
     def test_subscribe(self, requests_mock, logged_in_client):
         created_sub = {'id': 'sub_new_123'}
@@ -431,6 +444,7 @@ class TestFeedsAndDiscovery:
         result = data_client.get_related_videos('dQw4w9WgXcQ')
         assert result is not None
         assert 'relatedToVideoId=dQw4w9WgXcQ' in requests_mock.last_request.url
+        assert requests_mock.last_request.json()['videoId'] == 'dQw4w9WgXcQ'
 
     def test_get_video_categories(self, requests_mock, data_client):
         payload = load_v3_fixture('video_categories.json')
@@ -519,6 +533,7 @@ class TestRatingsAndHistory:
         playback_stats_url = 'https://www.youtube.com/api/stats/playback'
         requests_mock.get(
             playback_stats_url,
+            json={},
             status_code=200,
         )
 
