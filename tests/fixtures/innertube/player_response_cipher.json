@@ -1,0 +1,26 @@
+{
+  "playabilityStatus": {
+    "status": "OK"
+  },
+  "videoDetails": {
+    "videoId": "CIPHER_VID_456",
+    "title": "Encrypted Music Video",
+    "channelId": "UC_ARTIST",
+    "author": "Famous Artist"
+  },
+  "streamingData": {
+    "formats": [
+      {
+        "itag": 18,
+        "signatureCipher": "s=ENCRYPTED_SIG_ABC123&sp=sig&url=https%3A%2F%2Frr1.googlevideo.com%2Fvideoplayback%3Fitag%3D18%26n%3DTEST_N_TOKEN",
+        "mimeType": "video/mp4; codecs=\"avc1.42001E, mp4a.40.2\"",
+        "bitrate": 622438,
+        "width": 640,
+        "height": 360,
+        "fps": 25,
+        "qualityLabel": "360p"
+      }
+    ]
+  }
+}
+

@@ -1,0 +1,22 @@
+{
+  "playabilityStatus": {
+    "status": "UNPLAYABLE",
+    "reason": "The uploader has not made this video available in your country",
+    "errorScreen": {
+      "playerErrorMessageRenderer": {
+        "reason": {
+          "runs": [
+            {
+              "text": "The uploader has not made this video available in your country"
+            }
+          ]
+        }
+      }
+    }
+  },
+  "videoDetails": {
+    "videoId": "UNPLAYABLE_VID_1",
+    "title": "Blocked Video"
+  }
+}
+
