@@ -2,16 +2,12 @@ name: Add-on Validations
 
 on:
   push:
-    branches: [ master, main ]
     branches: [ master, main, current_testing, tests ]
 
   pull_request:
-    branches: [ master, main ]
     branches: [ master, main, current_testing, tests ]
 
 jobs:
-  addon-validations:
-    if: github.repository == 'anxdpanic/plugin.video.youtube'
   lint:
     name: Lint & Style
     runs-on: ubuntu-latest
@@ -19,7 +15,6 @@ jobs:
       - name: Checkout repository
         uses: actions/checkout@v4
 
-    name: Add-on Validations
       - name: Set up Python 3.12
         uses: actions/setup-python@v5
         with:
@@ -72,7 +67,6 @@ jobs:
       - name: Checkout Add-on
         uses: actions/checkout@v4
         with:
-          path: ${{ github.event.repository.name }}
           path: plugin.video.youtube
 
       - name: Set up Python ${{ matrix.python-version }}
@@ -88,5 +82,4 @@ jobs:
       - name: Kodi Add-on Checker (Nexus)
         id: kodi-addon-checker-nexus
         run: |
-          kodi-addon-checker ${{ github.event.repository.name }} --branch=nexus
           kodi-addon-checker plugin.video.youtube --branch=nexus
