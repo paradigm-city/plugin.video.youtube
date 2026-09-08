@@ -351,7 +351,6 @@ class TestChannelsAndSections:
 class TestSubscriptionActions:
     """Integration tests for subscriptions query, subscription, and unsubscription."""
 
-    def test_get_my_subscriptions(self, requests_mock, logged_in_client):
     def test_get_subscriptions_mine(self, requests_mock, logged_in_client):
         payload = load_v3_fixture('subscriptions_list.json')
         requests_mock.get(
@@ -359,7 +358,6 @@ class TestSubscriptionActions:
             json=payload,
         )
 
-        result = logged_in_client.get_my_subscriptions()
         result = logged_in_client.get_subscription('mine')
         assert result is not None
         assert len(result.get('items', [])) == 2

@@ -1,0 +1,16 @@
+{
+  "playabilityStatus": {
+    "status": "OK"
+  },
+  "videoDetails": {
+    "videoId": "LIVE_VID_123",
+    "title": "NASA Live Stream",
+    "isLive": true,
+    "channelId": "UC_NASA_CHANNEL",
+    "author": "NASA"
+  },
+  "streamingData": {
+    "hlsManifestUrl": "https://manifest.googlevideo.com/api/manifest/hls_variant/test_live.m3u8"
+  }
+}
+
