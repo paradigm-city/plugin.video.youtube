@@ -1317,12 +1317,30 @@ THUMB_TYPES = {
         'ratio': 0,
     },
 }
+INVALID_THUMB_KEYS = {'fhd', 'uhd', '4k', '2k'}
+INVALID_THUMB_NAMES = ('fhddefault', 'uhddefault', '4kdefault', '2kdefault')
 
 
 def get_thumbnail(thumb_size, thumbnails, default_thumb=None):
     if not thumbnails:
         return default_thumb
     is_dict = isinstance(thumbnails, dict)
+    if is_dict:
+        thumbnails = {
+            thumb_type: thumb for thumb_type, thumb in thumbnails.items()
+            if thumb_type not in INVALID_THUMB_KEYS
+            and not (isinstance(thumb, dict)
+                     and any(inv in thumb.get('url', '') for inv in INVALID_THUMB_NAMES))
+        }
+    elif isinstance(thumbnails, list):
+        thumbnails = [
+            thumb for thumb in thumbnails
+            if not (isinstance(thumb, dict)
+                    and any(inv in thumb.get('url', '') for inv in INVALID_THUMB_NAMES))
+        ]
+    if not thumbnails:
+        return default_thumb
+
     size_limit = thumb_size['size']
     ratio_limit = thumb_size['ratio']
 
