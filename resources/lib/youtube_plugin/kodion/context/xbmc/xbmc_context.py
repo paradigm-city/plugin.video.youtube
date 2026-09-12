@@ -682,6 +682,8 @@ class XbmcContext(AbstractContext):
                 self.__class__._settings = XbmcPluginSettings(addon)
         return self._settings
 
+    settings = get_settings
+
     def localize(self, text_id, args=None, default_text=None):
         if isinstance(text_id, tuple):
             _args = text_id[1:]

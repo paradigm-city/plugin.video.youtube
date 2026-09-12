@@ -28,7 +28,7 @@ class BaseItem(object):
     _version = 3
     _playable = False
 
-    def __init__(self, name, uri, image=None, fanart=None, **_kwargs):
+    def __init__(self, name, uri, image=None, fanart=None, landscape=None, **_kwargs):
         super(BaseItem, self).__init__()
         self._name = None
         self.set_name(name)
@@ -45,6 +45,9 @@ class BaseItem(object):
         self._fanart = ''
         if fanart:
             self.set_fanart(fanart)
+        self._landscape = ''
+        if landscape:
+            self.set_landscape(landscape)
 
         self._bookmark_id = None
         self._bookmark_timestamp = None
@@ -179,6 +182,20 @@ class BaseItem(object):
             MEDIA_PATH,
             'fanart.jpg',
         ))
+
+    def set_landscape(self, landscape):
+        if not landscape:
+            return
+
+        if '{media}/' in landscape:
+            self._landscape = landscape.format(media=MEDIA_PATH)
+        else:
+            self._landscape = landscape
+
+    def get_landscape(self, default=True):
+        if self._landscape or not default:
+            return self._landscape
+        return self._image
 
     def add_context_menu(self,
                          context_menu,

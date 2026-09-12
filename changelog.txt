@@ -1,5 +1,6 @@
 ## v7.4.4
 ### Fixed
+- Fix missing landscape artwork in Kodi list items
 - Fix not including FolderPath in current container details #1467
 - Fix current plugin item window properties sometimes not updating correctly
 - Fix not updating remote history upon consecutive playback events for certain video types

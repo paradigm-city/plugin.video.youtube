@@ -1078,6 +1078,8 @@ def update_video_items(provider, context, video_id_dict,
                 elif image.endswith(('_live.jpg', '_live.webp')):
                     fanart = ''.join((fanart, '?ct=', thumb_stamp))
             media_item.set_fanart(fanart)
+            if fanart:
+                media_item.set_landscape(fanart)
 
         # update channel mapping
         channel_id = snippet.get('channelId') or playlist_channel_id
@@ -1266,9 +1268,13 @@ def update_channel_info(provider,
             continue
 
         for item in channel_items:
+            channel_fanart = channel_info.get('fanart')
             if (use_channel_fanart
                     or use_thumb_fanart and not item.get_fanart(default=False)):
-                item.set_fanart(channel_info.get('fanart'))
+                item.set_fanart(channel_fanart)
+
+            if channel_fanart and isinstance(item, DirectoryItem):
+                item.set_landscape(channel_fanart)
 
             channel_name = channel_info.get('name')
             if channel_name:
@@ -1333,12 +1339,30 @@ THUMB_TYPES = {
         'ratio': 0,
     },
 }
+INVALID_THUMB_KEYS = {'fhd', 'uhd', '4k', '2k'}
+INVALID_THUMB_NAMES = ('fhddefault', 'uhddefault', '4kdefault', '2kdefault')
 
 
 def get_thumbnail(thumb_size, thumbnails, default_thumb=None):
     if not thumbnails:
         return default_thumb
     is_dict = isinstance(thumbnails, dict)
+    if is_dict:
+        thumbnails = {
+            thumb_type: thumb for thumb_type, thumb in thumbnails.items()
+            if thumb_type not in INVALID_THUMB_KEYS
+            and not (isinstance(thumb, dict)
+                     and any(inv in thumb.get('url', '') for inv in INVALID_THUMB_NAMES))
+        }
+    elif isinstance(thumbnails, list):
+        thumbnails = [
+            thumb for thumb in thumbnails
+            if not (isinstance(thumb, dict)
+                    and any(inv in thumb.get('url', '') for inv in INVALID_THUMB_NAMES))
+        ]
+    if not thumbnails:
+        return default_thumb
+
     size_limit = thumb_size['size']
     ratio_limit = thumb_size['ratio']
 
