@@ -545,9 +545,16 @@ def playback_item(context, media_item, show_fanart=None, **_kwargs):
     if show_fanart is None:
         show_fanart = settings.fanart_selection()
     image = media_item.get_image()
+    landscape = media_item.get_landscape()
+    if not landscape and show_fanart:
+        landscape = media_item.get_fanart(default=False)
     art = {'icon': image}
     if image:
         art['thumb'] = image
+    if landscape:
+        art['landscape'] = landscape
+    elif image:
+        art['landscape'] = image
     if show_fanart:
         art['fanart'] = media_item.get_fanart()
     list_item.setArt(art)
@@ -627,10 +634,17 @@ def directory_listitem(context, directory_item, show_fanart=None, **_kwargs):
     if show_fanart is None:
         show_fanart = context.get_settings().fanart_selection()
     image = directory_item.get_image()
+    landscape = directory_item.get_landscape()
+    if not landscape and show_fanart:
+        landscape = directory_item.get_fanart(default=False)
     art = {'icon': image}
     if image:
         art['thumb'] = image
         art['poster'] = image
+    if landscape:
+        art['landscape'] = landscape
+    elif image:
+        art['landscape'] = image
     if show_fanart:
         art['fanart'] = directory_item.get_fanart()
     list_item.setArt(art)
@@ -663,9 +677,16 @@ def image_listitem(context, image_item, show_fanart=None, **_kwargs):
     if show_fanart is None:
         show_fanart = context.get_settings().fanart_selection()
     image = image_item.get_image()
+    landscape = image_item.get_landscape()
+    if not landscape and show_fanart:
+        landscape = image_item.get_fanart(default=False)
     art = {'icon': image}
     if image:
         art['thumb'] = image
+    if landscape:
+        art['landscape'] = landscape
+    elif image:
+        art['landscape'] = image
     if show_fanart:
         art['fanart'] = image_item.get_fanart()
     list_item.setArt(art)
@@ -775,9 +796,16 @@ def media_listitem(context,
     if show_fanart is None:
         show_fanart = context.get_settings().fanart_selection()
     image = media_item.get_image()
+    landscape = media_item.get_landscape()
+    if not landscape and show_fanart:
+        landscape = media_item.get_fanart(default=False)
     art = {'icon': image}
     if image:
         art['thumb'] = image
+    if landscape:
+        art['landscape'] = landscape
+    elif image:
+        art['landscape'] = image
     if show_fanart:
         art['fanart'] = media_item.get_fanart()
     list_item.setArt(art)

@@ -16,6 +16,8 @@ from operator import methodcaller
 from re import compile as re_compile
 
 from .utils import (
+    INVALID_THUMB_KEYS,
+    INVALID_THUMB_NAMES,
     THUMB_TYPES,
     THUMB_URL,
     filter_videos,
@@ -137,6 +139,25 @@ def _process_list_response(provider,
                                                or '')
 
             thumbnails = snippet.get('thumbnails')
+            if not thumbnails:
+                pass
+            else:
+                if isinstance(thumbnails, dict):
+                    thumbnails = {
+                        k: v for k, v in thumbnails.items()
+                        if k not in INVALID_THUMB_KEYS
+                        and not (isinstance(v, dict)
+                                 and any(inv in v.get('url', '') for inv in INVALID_THUMB_NAMES))
+                    }
+                    snippet['thumbnails'] = thumbnails
+                elif isinstance(thumbnails, list):
+                    thumbnails = [
+                        v for v in thumbnails
+                        if not (isinstance(v, dict)
+                                and any(inv in v.get('url', '') for inv in INVALID_THUMB_NAMES))
+                    ]
+                    snippet['thumbnails'] = thumbnails
+
             if not thumbnails:
                 pass
             elif isinstance(thumbnails, list):
