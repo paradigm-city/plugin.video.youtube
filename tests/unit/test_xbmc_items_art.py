@@ -13,9 +13,13 @@ from youtube_plugin.kodion.items import (
     playback_item,
 )
 from youtube_plugin.youtube.helper.utils import (
+    INVALID_THUMB_KEYS,
+    INVALID_THUMB_NAMES,
+    get_thumbnail,
     update_channel_info,
     update_video_items,
 )
+from youtube_plugin.youtube.helper.v3 import _process_list_response
 from youtube_plugin.youtube.provider import Provider
 
 
@@ -153,4 +157,75 @@ def test_update_video_items_landscape_thumbnail(provider, mock_context):
     _, list_item, _ = media_listitem(mock_context, video_item)
     assert list_item.getArt('landscape') is not None
     assert list_item.getArt('landscape') == video_item.get_landscape()
+
+
+def test_get_thumbnail_filters_phantom_resolutions():
+    """Verify that fhd (1080p), uhd (4k), etc. are excluded and maxres (or hq720) is chosen."""
+    thumb_size = {'size': 0, 'ratio': 0}  # Best available
+    thumbnails = {
+        'default': {'url': 'https://i.ytimg.com/vi/MqvjslWsWXE/default.jpg', 'width': 120, 'height': 90},
+        'medium': {'url': 'https://i.ytimg.com/vi/MqvjslWsWXE/mqdefault.jpg', 'width': 320, 'height': 180},
+        'high': {'url': 'https://i.ytimg.com/vi/MqvjslWsWXE/hqdefault.jpg', 'width': 480, 'height': 360},
+        'standard': {'url': 'https://i.ytimg.com/vi/MqvjslWsWXE/sddefault.jpg', 'width': 640, 'height': 480},
+        'maxres': {'url': 'https://i.ytimg.com/vi/MqvjslWsWXE/maxresdefault.jpg', 'width': 1280, 'height': 720},
+        'fhd': {'url': 'https://i.ytimg.com/vi/MqvjslWsWXE/fhddefault.jpg', 'width': 1920, 'height': 1080},
+        'uhd': {'url': 'https://i.ytimg.com/vi/MqvjslWsWXE/uhddefault.jpg', 'width': 3840, 'height': 2160},
+    }
+    result = get_thumbnail(thumb_size, thumbnails)
+    assert result == 'https://i.ytimg.com/vi/MqvjslWsWXE/maxresdefault.jpg'
+    assert 'fhddefault' not in result
+    assert 'uhddefault' not in result
+
+
+def test_get_thumbnail_filters_phantom_urls_in_list():
+    """Verify that phantom thumbnail URLs in list form are also filtered."""
+    thumb_size = {'size': 0, 'ratio': 0}
+    thumbnails = [
+        {'url': 'https://i.ytimg.com/vi/abc/default.jpg', 'width': 120, 'height': 90},
+        {'url': 'https://i.ytimg.com/vi/abc/maxresdefault.jpg', 'width': 1280, 'height': 720},
+        {'url': 'https://i.ytimg.com/vi/abc/fhddefault.jpg', 'width': 1920, 'height': 1080},
+        {'url': 'https://i.ytimg.com/vi/abc/uhddefault.jpg', 'width': 3840, 'height': 2160},
+    ]
+    result = get_thumbnail(thumb_size, thumbnails)
+    assert result == 'https://i.ytimg.com/vi/abc/maxresdefault.jpg'
+
+
+def test_get_thumbnail_fallback_when_only_invalid():
+    """Verify default_thumb is returned when only invalid thumbnails are provided."""
+    thumb_size = {'size': 0, 'ratio': 0}
+    thumbnails = {
+        'fhd': {'url': 'https://i.ytimg.com/vi/abc/fhddefault.jpg', 'width': 1920, 'height': 1080},
+        'uhd': {'url': 'https://i.ytimg.com/vi/abc/uhddefault.jpg', 'width': 3840, 'height': 2160},
+    }
+    result = get_thumbnail(thumb_size, thumbnails, default_thumb='https://example.com/fallback.jpg')
+    assert result == 'https://example.com/fallback.jpg'
+
+
+def test_v3_process_list_response_filters_phantom_artwork(provider, mock_context):
+    """Verify _process_list_response filters phantom thumbnails and sets valid landscape."""
+    mock_context.get_settings().fanart_selection = lambda: False
+    mock_context.get_settings().get_thumbnail_size = lambda *args: {'size': 0, 'ratio': 0}
+    items = [{
+        'kind': 'youtube#video',
+        'id': 'MqvjslWsWXE',
+        'snippet': {
+            'title': 'Test Video with FHD',
+            'thumbnails': {
+                'default': {'url': 'https://i.ytimg.com/vi/MqvjslWsWXE/default.jpg', 'width': 120, 'height': 90},
+                'maxres': {'url': 'https://i.ytimg.com/vi/MqvjslWsWXE/maxresdefault.jpg', 'width': 1280, 'height': 720},
+                'fhd': {'url': 'https://i.ytimg.com/vi/MqvjslWsWXE/fhddefault.jpg', 'width': 1920, 'height': 1080},
+                'uhd': {'url': 'https://i.ytimg.com/vi/MqvjslWsWXE/uhddefault.jpg', 'width': 3840, 'height': 2160},
+            },
+        },
+    }]
+
+    result, _ = _process_list_response(provider, mock_context, {'items': items}, False, {}, {}, {}, {}, {}, {}, {})
+    assert len(result) == 1
+    video_item = result[0]
+    assert video_item.get_image() == 'https://i.ytimg.com/vi/MqvjslWsWXE/maxresdefault.jpg'
+    assert video_item.get_landscape() == 'https://i.ytimg.com/vi/MqvjslWsWXE/maxresdefault.jpg'
+
+    _, list_item, _ = media_listitem(mock_context, video_item)
+    assert list_item.getArt('landscape') == 'https://i.ytimg.com/vi/MqvjslWsWXE/maxresdefault.jpg'
+    assert list_item.getArt('thumb') == 'https://i.ytimg.com/vi/MqvjslWsWXE/maxresdefault.jpg'
 
