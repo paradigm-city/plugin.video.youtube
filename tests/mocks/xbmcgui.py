@@ -29,6 +29,13 @@ class MockVideoInfoTag(object):
     def getDuration(self):
         return self._data.get('duration', 0)
 
+    def __getattr__(self, name):
+        if name.startswith('set') or name.startswith('add'):
+            def _setter(*args, **kwargs):
+                self._data[name] = args
+            return _setter
+        raise AttributeError(name)
+
 
 class ListItem(object):
     def __init__(self, label="", label2="", path="", offscreen=False):
@@ -73,6 +80,11 @@ class ListItem(object):
     def setProperty(self, key, value):
         self._properties[str(key)] = str(value)
 
+    def setProperties(self, properties):
+        if isinstance(properties, dict):
+            for key, value in properties.items():
+                self._properties[str(key)] = str(value)
+
     def getProperty(self, key):
         return self._properties.get(str(key), '')
 
@@ -84,6 +96,16 @@ class ListItem(object):
 
     def getVideoInfoTag(self):
         return self._video_info_tag
+
+    def getMusicInfoTag(self):
+        if not hasattr(self, '_music_info_tag'):
+            self._music_info_tag = MockVideoInfoTag()
+        return self._music_info_tag
+
+    def getPictureInfoTag(self):
+        if not hasattr(self, '_picture_info_tag'):
+            self._picture_info_tag = MockVideoInfoTag()
+        return self._picture_info_tag
 
     def addContextMenuItems(self, items, replaceItems=False):
         if replaceItems:
