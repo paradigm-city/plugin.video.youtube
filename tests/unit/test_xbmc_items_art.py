@@ -13,8 +13,6 @@ from youtube_plugin.kodion.items import (
     playback_item,
 )
 from youtube_plugin.youtube.helper.utils import (
-    INVALID_THUMB_KEYS,
-    INVALID_THUMB_NAMES,
     get_thumbnail,
     update_channel_info,
     update_video_items,
