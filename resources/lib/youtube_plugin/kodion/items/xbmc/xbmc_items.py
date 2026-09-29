@@ -40,6 +40,25 @@ from ...utils.datetime import datetime_to_since, utc_to_local
 from ...utils.system_version import current_system_version
 
 
+def get_art(item, show_fanart, poster=False):
+    image = item.get_image()
+    art = {'icon': image}
+    if image:
+        art['thumb'] = image
+        if poster:
+            art['poster'] = image
+    # prefer explicit landscape art, then real (non-default) fanart, and only
+    # then fall back to the thumbnail image
+    landscape = (item.get_landscape(default=False)
+                 or show_fanart and item.get_fanart(default=False)
+                 or image)
+    if landscape:
+        art['landscape'] = landscape
+    if show_fanart:
+        art['fanart'] = item.get_fanart()
+    return art
+
+
 def set_info(list_item, item, properties, set_play_count=True, resume=True):
     stream_details = {}
     if not current_system_version.compatible(20):
@@ -544,20 +563,7 @@ def playback_item(context, media_item, show_fanart=None, **_kwargs):
 
     if show_fanart is None:
         show_fanart = settings.fanart_selection()
-    image = media_item.get_image()
-    landscape = media_item.get_landscape()
-    if not landscape and show_fanart:
-        landscape = media_item.get_fanart(default=False)
-    art = {'icon': image}
-    if image:
-        art['thumb'] = image
-    if landscape:
-        art['landscape'] = landscape
-    elif image:
-        art['landscape'] = image
-    if show_fanart:
-        art['fanart'] = media_item.get_fanart()
-    list_item.setArt(art)
+    list_item.setArt(get_art(media_item, show_fanart))
 
     if media_item.subtitles:
         list_item.setSubtitles(media_item.subtitles)
@@ -633,21 +639,7 @@ def directory_listitem(context, directory_item, show_fanart=None, **_kwargs):
 
     if show_fanart is None:
         show_fanart = context.get_settings().fanart_selection()
-    image = directory_item.get_image()
-    landscape = directory_item.get_landscape()
-    if not landscape and show_fanart:
-        landscape = directory_item.get_fanart(default=False)
-    art = {'icon': image}
-    if image:
-        art['thumb'] = image
-        art['poster'] = image
-    if landscape:
-        art['landscape'] = landscape
-    elif image:
-        art['landscape'] = image
-    if show_fanart:
-        art['fanart'] = directory_item.get_fanart()
-    list_item.setArt(art)
+    list_item.setArt(get_art(directory_item, show_fanart, poster=True))
 
     set_info(list_item, directory_item, props)
 
@@ -676,20 +668,7 @@ def image_listitem(context, image_item, show_fanart=None, **_kwargs):
 
     if show_fanart is None:
         show_fanart = context.get_settings().fanart_selection()
-    image = image_item.get_image()
-    landscape = image_item.get_landscape()
-    if not landscape and show_fanart:
-        landscape = image_item.get_fanart(default=False)
-    art = {'icon': image}
-    if image:
-        art['thumb'] = image
-    if landscape:
-        art['landscape'] = landscape
-    elif image:
-        art['landscape'] = image
-    if show_fanart:
-        art['fanart'] = image_item.get_fanart()
-    list_item.setArt(art)
+    list_item.setArt(get_art(image_item, show_fanart))
 
     set_info(list_item, image_item, props)
 
@@ -795,20 +774,7 @@ def media_listitem(context,
 
     if show_fanart is None:
         show_fanart = context.get_settings().fanart_selection()
-    image = media_item.get_image()
-    landscape = media_item.get_landscape()
-    if not landscape and show_fanart:
-        landscape = media_item.get_fanart(default=False)
-    art = {'icon': image}
-    if image:
-        art['thumb'] = image
-    if landscape:
-        art['landscape'] = landscape
-    elif image:
-        art['landscape'] = image
-    if show_fanart:
-        art['fanart'] = media_item.get_fanart()
-    list_item.setArt(art)
+    list_item.setArt(get_art(media_item, show_fanart))
 
     if media_item.subtitles:
         list_item.setSubtitles(media_item.subtitles)
