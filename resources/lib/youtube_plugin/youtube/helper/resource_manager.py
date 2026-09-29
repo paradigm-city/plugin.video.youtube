@@ -269,15 +269,19 @@ class ResourceManager(object):
                 'name': None,
                 'image': None,
                 'fanart': None,
+                'landscape': None,
             }
 
-            if channel_fanart:
-                images = item.get('brandingSettings', {}).get('image', {})
-                for banner in banners:
-                    image = images.get(banner)
-                    if image:
+            # brandingSettings are always requested, so use the banner as
+            # landscape art regardless of the fanart setting
+            images = item.get('brandingSettings', {}).get('image', {})
+            for banner in banners:
+                image = images.get(banner)
+                if image:
+                    channel_info['landscape'] = image
+                    if channel_fanart:
                         channel_info['fanart'] = image
-                        break
+                    break
 
             snippet = item.get('snippet')
             if snippet:
