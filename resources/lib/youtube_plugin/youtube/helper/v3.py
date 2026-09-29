@@ -16,11 +16,11 @@ from operator import methodcaller
 from re import compile as re_compile
 
 from .utils import (
-    INVALID_THUMB_KEYS,
-    INVALID_THUMB_NAMES,
     THUMB_TYPES,
     THUMB_URL,
+    filter_thumbnails,
     filter_videos,
+    get_landscape_thumbnail,
     get_thumbnail,
     make_comment_item,
     update_channel_items,
@@ -139,24 +139,9 @@ def _process_list_response(provider,
                                                or '')
 
             thumbnails = snippet.get('thumbnails')
-            if not thumbnails:
-                pass
-            else:
-                if isinstance(thumbnails, dict):
-                    thumbnails = {
-                        k: v for k, v in thumbnails.items()
-                        if k not in INVALID_THUMB_KEYS
-                        and not (isinstance(v, dict)
-                                 and any(inv in v.get('url', '') for inv in INVALID_THUMB_NAMES))
-                    }
-                    snippet['thumbnails'] = thumbnails
-                elif isinstance(thumbnails, list):
-                    thumbnails = [
-                        v for v in thumbnails
-                        if not (isinstance(v, dict)
-                                and any(inv in v.get('url', '') for inv in INVALID_THUMB_NAMES))
-                    ]
-                    snippet['thumbnails'] = thumbnails
+            if thumbnails:
+                thumbnails = filter_thumbnails(thumbnails)
+                snippet['thumbnails'] = thumbnails
 
             if not thumbnails:
                 pass
@@ -204,6 +189,9 @@ def _process_list_response(provider,
                 fanart = get_thumbnail(fanart_type, thumbnails)
             else:
                 fanart = None
+            # landscape art is always 16:9, regardless of thumbnail size and
+            # fanart settings
+            landscape = get_landscape_thumbnail(thumbnails)
 
         if kind_type == 'searchresult':
             kind, _, _, kind_type = _parse_kind(item_id)
@@ -246,6 +234,7 @@ def _process_list_response(provider,
                              item_uri,
                              image=image,
                              fanart=fanart,
+                             landscape=landscape,
                              plot=description,
                              channel_id=channel_id,
                              **item_params)
@@ -381,6 +370,7 @@ def _process_list_response(provider,
                                  item_uri,
                                  image=image,
                                  fanart=fanart,
+                                 landscape=landscape,
                                  plot=description,
                                  category_label=title,
                                  channel_id=channel_id,
@@ -407,6 +397,7 @@ def _process_list_response(provider,
                              item_uri,
                              image=image,
                              fanart=fanart,
+                             landscape=landscape,
                              plot=description,
                              channel_id=channel_id,
                              playlist_id=playlist_id,
@@ -439,6 +430,7 @@ def _process_list_response(provider,
                              item_uri,
                              image=image,
                              fanart=fanart,
+                             landscape=landscape,
                              plot=description,
                              **item_params)
 

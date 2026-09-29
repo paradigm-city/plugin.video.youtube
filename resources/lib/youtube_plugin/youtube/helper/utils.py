@@ -74,6 +74,17 @@ def get_thumb_timestamp(minutes=15):
     )))
 
 
+def add_thumb_timestamp(url, thumb_stamp):
+    """Append a cache busting timestamp to live stream thumbnail urls"""
+    if not url:
+        return url
+    if '?' in url:
+        return ''.join((url, '&ct=', thumb_stamp))
+    if url.endswith(('_live.jpg', '_live.webp')):
+        return ''.join((url, '?ct=', thumb_stamp))
+    return url
+
+
 def make_comment_item(context, snippet, uri, reply_count=0):
     localize = context.localize
     settings = context.get_settings()
@@ -556,6 +567,12 @@ def update_playlist_items(provider, context, playlist_id_dict,
             fanart = get_thumbnail(thumb_fanart, snippet.get('thumbnails'))
             playlist_item.set_fanart(fanart)
 
+        # landscape art is always 16:9, regardless of thumbnail size and
+        # fanart settings
+        playlist_item.set_landscape(get_landscape_thumbnail(
+            snippet.get('thumbnails')
+        ))
+
         # update channel mapping
         channel_id = snippet.get('channelId', '')
         playlist_item.channel_id = channel_id
@@ -1034,24 +1051,23 @@ def update_video_items(provider, context, video_id_dict,
                 or get_better_thumbs
                 or image.startswith(('Default', 'special://'))):
             image = get_thumbnail(thumb_size, snippet.get('thumbnails'))
-        if image and media_item.live:
-            if '?' in image:
-                image = ''.join((image, '&ct=', thumb_stamp))
-            elif image.endswith(('_live.jpg', '_live.webp')):
-                image = ''.join((image, '?ct=', thumb_stamp))
+        if media_item.live:
+            image = add_thumb_timestamp(image, thumb_stamp)
         media_item.set_image(image)
 
         # try to find a better resolution for the fanart
         if thumb_fanart:
             fanart = get_thumbnail(thumb_fanart, snippet.get('thumbnails'))
-            if fanart and media_item.live:
-                if '?' in fanart:
-                    fanart = ''.join((fanart, '&ct=', thumb_stamp))
-                elif image.endswith(('_live.jpg', '_live.webp')):
-                    fanart = ''.join((fanart, '?ct=', thumb_stamp))
+            if media_item.live:
+                fanart = add_thumb_timestamp(fanart, thumb_stamp)
             media_item.set_fanart(fanart)
-            if fanart:
-                media_item.set_landscape(fanart)
+
+        # landscape art is always 16:9, regardless of thumbnail size and
+        # fanart settings
+        landscape = get_landscape_thumbnail(snippet.get('thumbnails'))
+        if media_item.live:
+            landscape = add_thumb_timestamp(landscape, thumb_stamp)
+        media_item.set_landscape(landscape)
 
         # update channel mapping
         channel_id = snippet.get('channelId') or playlist_channel_id
@@ -1164,15 +1180,21 @@ def update_play_info(provider,
     if meta_data:
         media_item.live = meta_data.get('status', {}).get('live', False)
         media_item.set_subtitles(meta_data.get('subtitles', None))
-        image = get_thumbnail(settings.get_thumbnail_size(),
-                              meta_data.get('thumbnails'))
-        if image:
-            if media_item.live:
-                if '?' in image:
-                    image = ''.join((image, '&ct=', get_thumb_timestamp()))
-                elif image.endswith(('_live.jpg', '_live.webp')):
-                    image = ''.join((image, '?ct=', get_thumb_timestamp()))
-            media_item.set_image(image)
+        thumbnails = meta_data.get('thumbnails')
+        image = get_thumbnail(settings.get_thumbnail_size(), thumbnails)
+        # meta data thumbnails are unverified, so keep the landscape art from
+        # the Data API response set by update_video_items, if available
+        landscape = (
+            None
+            if media_item.get_landscape(default=False) else
+            get_landscape_thumbnail(thumbnails)
+        )
+        if media_item.live:
+            thumb_stamp = get_thumb_timestamp()
+            image = add_thumb_timestamp(image, thumb_stamp)
+            landscape = add_thumb_timestamp(landscape, thumb_stamp)
+        media_item.set_image(image)
+        media_item.set_landscape(landscape)
 
     if 'headers' in video_stream:
         media_item.set_headers(video_stream['headers'])
@@ -1251,8 +1273,11 @@ def update_channel_info(provider,
                     or use_thumb_fanart and not item.get_fanart(default=False)):
                 item.set_fanart(channel_fanart)
 
-            if channel_fanart and isinstance(item, DirectoryItem):
-                item.set_landscape(channel_fanart)
+            # use channel banner as landscape art for channel items, but not
+            # for playlists which have their own 16:9 thumbnails
+            if isinstance(item, DirectoryItem) and not item.playlist_id:
+                item.set_landscape(channel_info.get('landscape')
+                                   or channel_fanart)
 
             channel_name = channel_info.get('name')
             if channel_name:
@@ -1317,29 +1342,85 @@ THUMB_TYPES = {
         'ratio': 0,
     },
 }
-INVALID_THUMB_KEYS = {'fhd', 'uhd', '4k', '2k'}
-INVALID_THUMB_NAMES = ('fhddefault', 'uhddefault', '4kdefault', '2kdefault')
+# The Data API returns additional thumbnail types (e.g. qhd, fhd, uhd, 4k, 2k)
+# with urls that do not resolve (404). Only accept known thumbnail types rather
+# than trying to keep up with a list of invalid types.
+VALID_THUMB_KEYS = frozenset(THUMB_TYPES)
+# Thumbnail lists (not keyed by type) can only be filtered by url
+INVALID_THUMB_NAMES = (
+    'qhddefault',
+    'fhddefault',
+    'uhddefault',
+    '4kdefault',
+    '2kdefault',
+)
+# Prefer the largest 16:9 thumbnail, only falling back to other ratios if
+# no 16:9 thumbnail is available. Used for landscape art, independent of the
+# thumbnail size and fanart settings.
+LANDSCAPE_THUMB_SIZE = {
+    'size': 0,
+    'ratio': 16 / 9,
+}
+# Of the unverified thumbnails, only mqdefault is 16:9 and always available.
+# hq720, sddefault and maxresdefault do not exist for older videos.
+SAFE_LANDSCAPE_THUMB_SIZE = {
+    'size': THUMB_TYPES['medium']['size'],
+    'ratio': 16 / 9,
+}
+
+
+def _is_invalid_thumb_url(thumb):
+    if not isinstance(thumb, dict):
+        return False
+    url = thumb.get('url') or ''
+    return any(name in url for name in INVALID_THUMB_NAMES)
+
+
+def filter_thumbnails(thumbnails):
+    """Remove thumbnail types that do not resolve to a valid image"""
+    if isinstance(thumbnails, dict):
+        return {
+            thumb_type: thumb
+            for thumb_type, thumb in thumbnails.items()
+            if thumb_type in VALID_THUMB_KEYS
+            and not _is_invalid_thumb_url(thumb)
+        }
+    if isinstance(thumbnails, list):
+        return [
+            thumb
+            for thumb in thumbnails
+            if not _is_invalid_thumb_url(thumb)
+        ]
+    return thumbnails
+
+
+def get_landscape_thumbnail(thumbnails, default_thumb=None):
+    """Get the largest 16:9 thumbnail that is known to exist"""
+    thumbnails = filter_thumbnails(thumbnails)
+    if not thumbnails:
+        return default_thumb
+    if isinstance(thumbnails, dict):
+        verified = {
+            thumb_type: thumb
+            for thumb_type, thumb in thumbnails.items()
+            if isinstance(thumb, dict) and not thumb.get('unverified')
+        }
+    else:
+        verified = [
+            thumb
+            for thumb in thumbnails
+            if isinstance(thumb, dict) and not thumb.get('unverified')
+        ]
+    if verified:
+        return get_thumbnail(LANDSCAPE_THUMB_SIZE, verified, default_thumb)
+    return get_thumbnail(SAFE_LANDSCAPE_THUMB_SIZE, thumbnails, default_thumb)
 
 
 def get_thumbnail(thumb_size, thumbnails, default_thumb=None):
+    thumbnails = filter_thumbnails(thumbnails)
     if not thumbnails:
         return default_thumb
     is_dict = isinstance(thumbnails, dict)
-    if is_dict:
-        thumbnails = {
-            thumb_type: thumb for thumb_type, thumb in thumbnails.items()
-            if thumb_type not in INVALID_THUMB_KEYS
-            and not (isinstance(thumb, dict)
-                     and any(inv in thumb.get('url', '') for inv in INVALID_THUMB_NAMES))
-        }
-    elif isinstance(thumbnails, list):
-        thumbnails = [
-            thumb for thumb in thumbnails
-            if not (isinstance(thumb, dict)
-                    and any(inv in thumb.get('url', '') for inv in INVALID_THUMB_NAMES))
-        ]
-    if not thumbnails:
-        return default_thumb
 
     size_limit = thumb_size['size']
     ratio_limit = thumb_size['ratio']
