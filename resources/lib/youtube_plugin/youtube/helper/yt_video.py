@@ -118,7 +118,6 @@ def _process_more_for_video(provider, context):
         menu_items.video_related(context, video_id, item_name),
         menu_items.video_comments(context, video_id, item_name),
         menu_items.video_description_links(context, video_id, item_name),
-        menu_items.video_rate(context, video_id),
     ] if params.get('logged_in') else [
         menu_items.video_related(context, video_id, item_name),
         menu_items.video_comments(context, video_id, item_name),

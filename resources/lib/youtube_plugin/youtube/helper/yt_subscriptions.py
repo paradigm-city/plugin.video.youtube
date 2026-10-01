@@ -23,6 +23,12 @@ def _process_list(provider, context, client):
     if not json_data:
         return []
 
+    for item in json_data.get('items') or ():
+        if isinstance(item, dict):
+            ch_id = (item.get('snippet') or {}).get('resourceId', {}).get('channelId')
+            if ch_id:
+                client.set_subscription_status(ch_id, True)
+
     result = v3.response_to_items(provider, context, json_data)
     options = {
         provider.CONTENT_TYPE: {
@@ -34,7 +40,7 @@ def _process_list(provider, context, client):
     return result, options
 
 
-def _process_add(_provider, context, client):
+def _process_add(provider, context, client):
     ui = context.get_ui()
     li_subscription_id = ui.get_listitem_property(SUBSCRIPTION_ID)
 
@@ -51,12 +57,14 @@ def _process_add(_provider, context, client):
     if not json_data:
         return False
 
+    client.set_subscription_status(subscription_id, True)
+
     ui.show_notification(
         context.localize('subscribed.to.channel'),
         time_ms=2500,
         audible=False,
     )
-    return True
+    return True, {provider.FORCE_REFRESH: True}
 
 
 def _process_remove(provider, context, client):
@@ -72,6 +80,9 @@ def _process_remove(provider, context, client):
     if not channel_id and li_channel_id:
         channel_id = li_channel_id
 
+    if not channel_id and subscription_id and subscription_id.startswith('UC'):
+        channel_id = subscription_id
+
     if subscription_id:
         success = client.unsubscribe(subscription_id)
     elif channel_id:
@@ -81,6 +92,9 @@ def _process_remove(provider, context, client):
 
     if not success:
         return False, None
+
+    if channel_id:
+        client.set_subscription_status(channel_id, False)
 
     ui.show_notification(
         context.localize('unsubscribed.from.channel'),

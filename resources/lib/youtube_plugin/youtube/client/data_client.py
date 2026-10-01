@@ -366,6 +366,7 @@ class YouTubeDataClient(YouTubeLoginClient):
 
     def __init__(self, context, items_per_page=None, **kwargs):
         self.channel_id = None
+        self._subscription_status = None
 
         if items_per_page is None:
             items_per_page = context.get_settings().items_per_page()
@@ -382,6 +383,7 @@ class YouTubeDataClient(YouTubeLoginClient):
 
     def set_access_token(self, access_tokens=None):
         super(YouTubeDataClient, self).set_access_token(access_tokens)
+        self._subscription_status = None
         if self.logged_in:
             context = self._context
             function_cache = context.get_function_cache()
@@ -395,6 +397,101 @@ class YouTubeDataClient(YouTubeLoginClient):
             )
         else:
             self.channel_id = None
+
+    def _get_user_sub_cache_key(self, channel_id):
+        user_id = self.channel_id or self._context.get_access_manager().get_current_user_id() or 'default'
+        return 'sub_status:{user}:{channel}'.format(user=user_id, channel=channel_id)
+
+    def get_subscription_status(self, channel_ids):
+        if not self.logged_in:
+            return {}
+        if not channel_ids:
+            return {}
+
+        clean_ids = {cid for cid in channel_ids if cid and isinstance(cid, str)}
+        if not clean_ids:
+            return {}
+
+        if self._subscription_status is None:
+            self._subscription_status = {}
+
+        result = {}
+        missing_from_memory = set()
+
+        for cid in clean_ids:
+            if cid in self._subscription_status:
+                result[cid] = self._subscription_status[cid]
+            else:
+                missing_from_memory.add(cid)
+
+        if missing_from_memory:
+            data_cache = self._context.get_data_cache()
+            cache_keys_map = {
+                self._get_user_sub_cache_key(cid): cid
+                for cid in missing_from_memory
+            }
+            cached_data = data_cache.get_items(
+                cache_keys_map.keys(),
+                seconds=data_cache.ONE_DAY,
+            ) if data_cache else {}
+
+            missing_from_cache = set()
+            for key, cid in cache_keys_map.items():
+                if key in cached_data:
+                    is_subbed = bool(cached_data[key])
+                    self._subscription_status[cid] = is_subbed
+                    result[cid] = is_subbed
+                else:
+                    missing_from_cache.add(cid)
+
+            if missing_from_cache:
+                missing_list = list(missing_from_cache)
+                new_cache_items = {}
+                for i in range(0, len(missing_list), 50):
+                    batch = missing_list[i:i + 50]
+                    json_data = self.get_subscription(
+                        'mine',
+                        for_channel_id=batch,
+                    )
+                    if not json_data:
+                        break
+
+                    found_cids = set()
+                    for item in json_data.get('items') or ():
+                        if not isinstance(item, dict):
+                            continue
+                        sub_cid = (item.get('snippet') or {}).get(
+                            'resourceId', {}
+                        ).get('channelId')
+                        if sub_cid:
+                            found_cids.add(sub_cid)
+
+                    for cid in batch:
+                        is_subbed = cid in found_cids
+                        self._subscription_status[cid] = is_subbed
+                        result[cid] = is_subbed
+                        new_cache_items[self._get_user_sub_cache_key(cid)] = is_subbed
+
+                if new_cache_items and data_cache:
+                    data_cache.set_items(new_cache_items)
+
+        return {
+            cid: result.get(cid, False)
+            for cid in clean_ids
+        }
+
+    def set_subscription_status(self, channel_id, subscribed):
+        if not channel_id:
+            return
+        if self._subscription_status is None:
+            self._subscription_status = {}
+        self._subscription_status[channel_id] = bool(subscribed)
+        data_cache = self._context.get_data_cache()
+        if data_cache:
+            data_cache.set_item(
+                self._get_user_sub_cache_key(channel_id),
+                bool(subscribed),
+            )
 
     def max_results(self):
         return self._context.get_param('items_per_page') or self._max_results
@@ -651,23 +748,35 @@ class YouTubeDataClient(YouTubeLoginClient):
                                 **kwargs)
 
     def get_subscription(self,
-                         channel_id,
+                         channel_id='mine',
                          order='alphabetical',
                          page_token='',
+                         for_channel_id=None,
                          **kwargs):
         """
         :param channel_id: [channel-id|'mine']
         :param order: ['alphabetical'|'relevance'|'unread']
         :param page_token:
+        :param for_channel_id: [channel-id|list/tuple/set of channel-ids]
         :return:
         """
-        params = {'part': 'snippet',
-                  'maxResults': self.max_results(),
-                  'order': order}
-        if channel_id == 'mine':
+        params = {'part': 'snippet'}
+        if for_channel_id:
+            if isinstance(for_channel_id, (list, tuple, set)):
+                params['forChannelId'] = ','.join(for_channel_id)
+                params['maxResults'] = min(50, max(1, len(for_channel_id)))
+            else:
+                params['forChannelId'] = for_channel_id
+                params['maxResults'] = 50
             params['mine'] = True
         else:
-            params['channelId'] = channel_id
+            params['maxResults'] = self.max_results()
+            params['order'] = order
+            if channel_id == 'mine':
+                params['mine'] = True
+            elif channel_id:
+                params['channelId'] = channel_id
+
         if page_token:
             params['pageToken'] = page_token
 
