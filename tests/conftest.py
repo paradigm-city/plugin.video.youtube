@@ -30,9 +30,11 @@ def reset_kodi_mocks():
     """Reset accumulated state in Kodi mocks before and after each test."""
     xbmc.LOG_RECORDS.clear()
     xbmcplugin.clear_mock_data()
+    xbmcgui.clear_window_properties()
     yield
     xbmc.LOG_RECORDS.clear()
     xbmcplugin.clear_mock_data()
+    xbmcgui.clear_window_properties()
 
 
 @pytest.fixture
