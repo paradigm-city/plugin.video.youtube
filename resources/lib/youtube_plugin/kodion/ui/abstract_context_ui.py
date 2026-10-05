@@ -22,6 +22,9 @@ class AbstractContextUI(object):
                                message_template=None):
         raise NotImplementedError()
 
+    def create_qr_code_dialog(self, heading, message, entries):
+        raise NotImplementedError()
+
     @staticmethod
     def on_keyboard_input(title, default='', hidden=False):
         raise NotImplementedError()

@@ -10,6 +10,8 @@
 
 from __future__ import absolute_import, division, unicode_literals
 
+from timeit import default_timer
+
 from ..youtube_exceptions import LoginException
 from ...kodion import logging
 
@@ -50,6 +52,126 @@ def _do_logout(provider, context, client=None, confirmed=None, **kwargs):
     return success
 
 
+def _request_codes(client, context, token_idx, token_type):
+    json_data = client.request_device_and_user_code(token_idx)
+    if not json_data:
+        return None
+
+    localize = context.localize
+    ui = context.get_ui()
+
+    interval = int(json_data.get('interval', 5))
+    if interval > 60:
+        interval = 5
+    user_code = json_data['user_code']
+    verification_url = (json_data.get('verification_url')
+                        or 'https://www.youtube.com/activate')
+    if verification_url.startswith('https://www.'):
+        display_url = verification_url[12:]
+    elif verification_url.startswith('https://'):
+        display_url = verification_url[8:]
+    else:
+        display_url = verification_url
+
+    return {
+        'token_idx': token_idx,
+        'device_code': json_data['device_code'],
+        'interval': interval,
+        'expires_in': int(json_data.get('expires_in', 10 * 60)),
+        'next_poll': 0,
+        'title': {
+            'tv': 'YouTube TV',
+            'user': localize('sign.client.user'),
+            'vr': 'YouTube VR',
+            'dev': localize('sign.client.dev'),
+        }.get(token_type, token_type),
+        # Code is pre-filled by the verification page where supported,
+        # otherwise it is ignored and the code has to be entered manually
+        'qr': ''.join((
+            verification_url,
+            '&' if '?' in verification_url else '?',
+            'user_code=',
+            user_code,
+        )),
+        'lines': (
+            display_url,
+            ui.bold(user_code),
+        ),
+    }
+
+
+def _poll_access_tokens(context, client, pending, new_tokens):
+    localize = context.localize
+    ui = context.get_ui()
+
+    waiting = localize('sign.status.waiting')
+    approved = ui.color('lime', localize('sign.status.approved'))
+    deadline = default_timer() + min(entry['expires_in'] for entry in pending)
+
+    with ui.create_qr_code_dialog(
+            heading=localize('sign.in'),
+            message=localize('sign.qr.text'),
+            entries=pending,
+    ) as dialog:
+        for entry_idx in range(len(pending)):
+            dialog.set_status(entry_idx, waiting)
+
+        remaining_entries = len(pending)
+        while remaining_entries and not dialog.is_aborted():
+            now = default_timer()
+            remaining = deadline - now
+            if remaining <= 0:
+                break
+            dialog.set_footer(localize(
+                'sign.expires_in',
+                '%d:%02d' % divmod(int(remaining), 60),
+            ))
+
+            for entry_idx, entry in enumerate(pending):
+                if entry['next_poll'] is None or entry['next_poll'] > now:
+                    continue
+
+                json_data = client.request_access_token(
+                    entry['token_idx'], entry['device_code']
+                )
+                logging.debug('Requesting access token: {data!p}',
+                              data=json_data)
+                entry['next_poll'] = now + entry['interval']
+
+                if json_data and 'error' not in json_data:
+                    access_token = json_data.get('access_token', '')
+                    refresh_token = json_data.get('refresh_token', '')
+                    if not access_token and not refresh_token:
+                        expiry = 0
+                    else:
+                        expiry = int(json_data.get('expires_in', 3600))
+                    new_tokens[entry['token_idx']] = (
+                        access_token, expiry, refresh_token
+                    )
+                    dialog.set_status(entry_idx, approved)
+                elif not json_data:
+                    dialog.set_status(entry_idx, ui.color('red', '-'))
+                elif json_data['error'] == 'slow_down':
+                    entry['interval'] += 5
+                    entry['next_poll'] = now + entry['interval']
+                    continue
+                elif json_data['error'] != 'authorization_pending':
+                    message = json_data['error']
+                    title = '%s: %s' % (context.get_name(), message)
+                    ui.show_notification(message, title)
+                    logging.error_trace('Access token request error - %s',
+                                        message)
+                    dialog.set_status(entry_idx, ui.color('red', message))
+                else:
+                    continue
+
+                entry['next_poll'] = None
+                remaining_entries -= 1
+
+            if context.sleep(1):
+                break
+
+
 def _do_login(provider, context, client=None, **kwargs):
     if not client:
         client = provider.get_client(context)
@@ -60,8 +182,6 @@ def _do_login(provider, context, client=None, **kwargs):
     function_cache = context.get_function_cache()
     ui = context.get_ui()
 
-    ui.on_ok(localize('sign.multi.title'), localize('sign.multi.text'))
-
     (
         access_tokens,
         num_access_tokens,
@@ -71,118 +191,63 @@ def _do_login(provider, context, client=None, **kwargs):
         refresh_tokens,
         num_refresh_tokens,
     ) = access_manager.get_refresh_tokens()
-    token_types = ['tv', 'user', 'vr', 'dev']
-    new_access_tokens = dict.fromkeys(token_types, None)
-    for token_idx, token_type in enumerate(token_types):
-        try:
-            access_token = access_tokens[token_idx]
-            refresh_token = refresh_tokens[token_idx]
-            if access_token and refresh_token:
-                new_access_tokens[token_type] = access_token
-                new_token = (access_token, expiry_timestamp, refresh_token)
-                token_types[token_idx] = new_token
-                continue
-        except IndexError:
-            pass
+    token_types = ('tv', 'user', 'vr', 'dev')
+    new_tokens = [('', expiry_timestamp, '')] * len(token_types)
+    pending = []
 
-        if not function_cache.run(
-                client.internet_available,
-                function_cache.ONE_MINUTE * 5,
-                _refresh=True,
-        ):
-            break
-
-        new_token = ('', expiry_timestamp, '')
-        try:
-            json_data = client.request_device_and_user_code(token_idx)
-            if not json_data:
-                continue
-
-            interval = int(json_data.get('interval', 5))
-            if interval > 60:
-                interval = 5
-            device_code = json_data['device_code']
-            user_code = json_data['user_code']
-            verification_url = json_data.get('verification_url')
-            if verification_url:
-                if verification_url.startswith('https://www.'):
-                    verification_url = verification_url[12:]
-            else:
-                verification_url = 'youtube.com/activate'
-
-            message = ''.join((
-                localize('sign.go_to', ui.bold(verification_url)),
-                '[CR]',
-                localize('sign.enter_code'),
-                ' ',
-                ui.bold(user_code),
-            ))
-
-            with ui.create_progress_dialog(
-                    heading=localize('sign.in'),
-                    message=message,
-                    background=False
-            ) as progress_dialog:
-                steps = ((10 * 60) // interval)  # 10 Minutes
-                progress_dialog.set_total(steps)
-                for _ in range(steps):
-                    progress_dialog.update()
-                    json_data = client.request_access_token(
-                        token_idx, device_code
+    try:
+        for token_idx, token_type in enumerate(token_types):
+            try:
+                access_token = access_tokens[token_idx]
+                refresh_token = refresh_tokens[token_idx]
+                if access_token and refresh_token:
+                    new_tokens[token_idx] = (
+                        access_token, expiry_timestamp, refresh_token
                     )
-                    if not json_data:
-                        break
+                    continue
+            except IndexError:
+                pass
 
-                    logging.debug('Requesting access token: {data!p}',
-                                  data=json_data)
+            if not function_cache.run(
+                    client.internet_available,
+                    function_cache.ONE_MINUTE * 5,
+                    _refresh=True,
+            ):
+                return False
 
-                    if 'error' not in json_data:
-                        access_token = json_data.get('access_token', '')
-                        refresh_token = json_data.get('refresh_token', '')
-                        if not access_token and not refresh_token:
-                            expiry = 0
-                        else:
-                            expiry = int(json_data.get('expires_in', 3600))
-                        new_token = (access_token, expiry, refresh_token)
-                        break
+            entry = _request_codes(client, context, token_idx, token_type)
+            if entry:
+                pending.append(entry)
 
-                    if json_data['error'] != 'authorization_pending':
-                        message = json_data['error']
-                        title = '%s: %s' % (context.get_name(), message)
-                        ui.show_notification(message, title)
-                        logging.error_trace('Access token request error - %s',
-                                            message)
-                        break
+        # Show all codes at once and wait for them to be approved in any order
+        if pending:
+            _poll_access_tokens(context, client, pending, new_tokens)
+    except LoginException:
+        ui.on_ok(context.get_name(), localize('sign.multi.failed'))
+        _do_logout(provider, context, client=client, confirmed=True)
+        return False
 
-                    if progress_dialog.is_aborted():
-                        break
+    for token_type, new_token in zip(token_types, new_tokens):
+        logging.debug(('YouTube Login:',
+                       'Type:          {token!r}',
+                       'Access token:  {has_access_token!r}',
+                       'Expires:       {expiry!r}',
+                       'Refresh token: {has_refresh_token!r}'),
+                      token=token_type,
+                      has_access_token=bool(new_token[0]),
+                      expiry=new_token[1],
+                      has_refresh_token=bool(new_token[2]))
 
-                    context.sleep(interval)
-        except LoginException:
-            ui.on_ok(context.get_name(), localize('sign.multi.failed'))
-            _do_logout(provider, context, client=client, confirmed=True)
-            break
-        finally:
-            new_access_tokens[token_type] = new_token[0]
-            token_types[token_idx] = new_token
-            logging.debug(('YouTube Login:',
-                           'Type:          {token!r}',
-                           'Access token:  {has_access_token!r}',
-                           'Expires:       {expiry!r}',
-                           'Refresh token: {has_refresh_token!r}'),
-                          token=token_type,
-                          has_access_token=bool(new_token[0]),
-                          expiry=new_token[1],
-                          has_refresh_token=bool(new_token[2]))
-    else:
-        provider.reset_client(
-            context=context,
-            access_tokens=new_access_tokens,
-            **kwargs
-        )
-        access_manager.update_access_token(addon_id, *zip(*token_types))
-        return True
-    return False
+    provider.reset_client(
+        context=context,
+        access_tokens={
+            token_type: new_token[0]
+            for token_type, new_token in zip(token_types, new_tokens)
+        },
+        **kwargs
+    )
+    access_manager.update_access_token(addon_id, *zip(*new_tokens))
+    return True
 
 
 def process(mode, provider, context, client=None, refresh=True, **kwargs):

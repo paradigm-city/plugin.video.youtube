@@ -79,6 +79,16 @@ class XbmcContextUI(AbstractContextUI):
             ),
         )
 
+    def create_qr_code_dialog(self, heading, message, entries):
+        from .xbmc_qr_code_dialog import XbmcQRCodeDialog
+
+        return XbmcQRCodeDialog(
+            heading=heading,
+            message=message,
+            entries=entries,
+            cancel_label=self._context.localize('cancel'),
+        )
+
     @staticmethod
     def on_keyboard_input(title, default='', hidden=False):
         # Starting with Gotham (13.X > ...)
