@@ -1628,3 +1628,51 @@ msgstr ""
 msgctxt "#30830"
 msgid "Expires in %s"
 msgstr ""
+
+msgctxt "#30831"
+msgid "Click \"Open sign-in page\" for each account below, then choose your Google account and allow access. The code is copied for you: if Google says the codes do not match, press Continue and paste it. Afterwards, close the Google tab to return here for the next account."
+msgstr ""
+
+msgctxt "#30832"
+msgid "Copy"
+msgstr ""
+
+msgctxt "#30833"
+msgid "Copied"
+msgstr ""
+
+msgctxt "#30834"
+msgid "Open sign-in page"
+msgstr ""
+
+msgctxt "#30835"
+msgid "All done. You can close this page."
+msgstr ""
+
+msgctxt "#30836"
+msgid "This sign-in has ended. You can close this page."
+msgstr ""
+
+msgctxt "#30837"
+msgid "Scan the QR code with your phone and follow the steps on the page that opens. This window closes automatically once everything has been approved."
+msgstr ""
+
+msgctxt "#30838"
+msgid "Kodi will open a sign-in page in the web browser on this device. For each account listed there, click \"Open sign-in page\", choose your Google account and allow access. If Google says the codes do not match, press Continue and paste the code, which is copied for you.[CR][CR]Open the web browser now?"
+msgstr ""
+
+msgctxt "#30839"
+msgid "Open browser"
+msgstr ""
+
+msgctxt "#30840"
+msgid "Show codes"
+msgstr ""
+
+msgctxt "#30841"
+msgid "Unable to open a web browser on this device"
+msgstr ""
+
+msgctxt "#30842"
+msgid "Follow the steps in your web browser, or use the codes below instead. This window closes automatically once everything has been approved."
+msgstr ""

@@ -15,10 +15,13 @@ import socket
 from collections import deque
 from errno import errorcode
 from functools import partial
+from hmac import compare_digest
 from io import open
 from json import dumps as json_dumps, loads as json_loads
 from select import select
 from textwrap import dedent
+from time import time
+from xml.sax.saxutils import escape
 
 from urllib3.exceptions import HTTPError
 
@@ -39,6 +42,7 @@ from ..constants import (
     LICENSE_TOKEN,
     LICENSE_URL,
     PATHS,
+    SIGN_IN_CODES,
     SYNC_API_KEYS,
     TEMP_PATH,
 )
@@ -316,6 +320,29 @@ class RequestHandler(BaseHTTPRequestHandler, object):
 
             for chunk in self._get_chunks(html):
                 self.wfile.write(chunk)
+
+        elif path['path'] in {PATHS.SIGN_IN, PATHS.SIGN_IN_STATUS}:
+            sign_in = self.sign_in_data(path['params'])
+            if not sign_in:
+                self.send_error(404)
+            else:
+                if path['path'] == PATHS.SIGN_IN:
+                    content = self.sign_in_page(sign_in)
+                    content_type = 'text/html; charset=utf-8'
+                else:
+                    content = json_dumps([
+                        entry.get('status')
+                        for entry in sign_in.get('entries', ())
+                    ])
+                    content_type = 'application/json; charset=utf-8'
+                content = content.encode('utf-8')
+
+                self.send_response(200)
+                self.send_header('Content-Type', content_type)
+                self.send_header('Content-Length', str(len(content)))
+                self.send_header('Cache-Control', 'no-store')
+                self.end_headers()
+                self.wfile.write(content)
 
         elif path['path'] == PATHS.PING:
             self.send_error(204)
@@ -841,6 +868,77 @@ class RequestHandler(BaseHTTPRequestHandler, object):
         return html
 
 
+    @classmethod
+    def sign_in_data(cls, params):
+        """
+        Pending sign-in, as shared by the sign-in dialog, if the request has
+        the matching token. Codes are only served while sign-in is ongoing.
+        """
+        data = cls._context.get_ui().get_property(SIGN_IN_CODES,
+                                                  log_redact='REDACTED')
+        if not data:
+            return None
+        try:
+            data = json_loads(data)
+        except ValueError:
+            return None
+        token = (params or {}).get('t', [None])[0]
+        if not token or not compare_digest(token, data.get('token', '')):
+            return None
+        expires = data.get('expires')
+        if expires and expires < time():
+            return None
+        return data
+
+    @classmethod
+    def sign_in_page(cls, sign_in):
+        localize = cls._context.localize
+        statuses = {
+            'pending': localize('sign.status.waiting'),
+            'approved': localize('sign.status.approved'),
+            'failed': localize(257),  # Error
+        }
+
+        entry_html = Pages.sign_in.get('entry')
+        entries = ''.join([
+            entry_html.format(
+                idx=idx,
+                state=escape(entry.get('status', 'pending')),
+                title=escape(entry.get('title', '')),
+                status=escape(statuses.get(entry.get('status'), '')),
+                code=escape(entry.get('code', ''), {'"': '&quot;'}),
+                url=escape(entry.get('url', ''), {'"': '&quot;'}),
+                copy=localize('sign.page.copy'),
+                open=localize('sign.page.open'),
+            )
+            for idx, entry in enumerate(sign_in.get('entries', ()))
+        ])
+
+        script = Pages.sign_in.get('script').format(
+            status_url=json_dumps(''.join((
+                PATHS.SIGN_IN_STATUS, '?t=', sign_in.get('token', ''),
+            ))),
+            labels=json_dumps(dict(
+                statuses,
+                copied=localize('sign.page.copied'),
+            )),
+        ).replace('</', '<\\/')
+
+        html = Pages.sign_in.get('html')
+        css = Pages.sign_in.get('css')
+        html = html.format(
+            css=css,
+            title=localize('sign.in'),
+            header=localize('sign.in'),
+            instructions=localize('sign.page.text'),
+            entries=entries,
+            done=localize('sign.page.done'),
+            ended=localize('sign.page.ended'),
+            script=script,
+        )
+        return html
+
+
 class Pages(object):
     api_configuration = {
         'html': dedent('''\
@@ -967,6 +1065,238 @@ class Pages(object):
               font-family: Arial, Helvetica, sans-serif;
               font-size: 12px;
               color: #fff;
+            }
+        ''').splitlines(True)) + '\t\t'.expandtabs(2)
+    }
+
+    sign_in = {
+        'html': dedent('''\
+            <!doctype html>
+            <html>
+              <head>
+                <link rel="icon" href="data:;base64,=">
+                <meta charset="utf-8">
+                <meta name="viewport" content="width=device-width, initial-scale=1">
+                <title>{title}</title>
+                <style>{css}</style>
+              </head>
+              <body>
+                <div class="center">
+                  <h5>{header}</h5>
+                  <div class="content">
+                    <p>{instructions}</p>
+                    {entries}
+                    <p id="done" class="note" hidden>{done}</p>
+                    <p id="ended" class="note" hidden>{ended}</p>
+                  </div>
+                </div>
+                <script>{script}</script>
+              </body>
+            </html>
+        '''),
+        'entry': dedent('''\
+            <div class="entry {state}" data-idx="{idx}">
+              <div class="title">{title}<span class="status">{status}</span></div>
+              <div class="row">
+                <input class="code" type="text" value="{code}" readonly>
+                <button type="button" class="copy">{copy}</button>
+              </div>
+              <a class="open" href="{url}" target="_blank" rel="noopener noreferrer">{open}</a>
+            </div>
+        '''),
+        'script': dedent('''
+            (function () {{
+              var statusUrl = {status_url};
+              var labels = {labels};
+              var entries = document.querySelectorAll('.entry');
+              var timer = null;
+              var current = null;
+
+              function copyCode(entry) {{
+                var input = entry.querySelector('.code');
+                var copied = false;
+                if (navigator.clipboard && window.isSecureContext) {{
+                  navigator.clipboard.writeText(input.value);
+                  copied = true;
+                }} else {{
+                  input.focus();
+                  input.select();
+                  input.setSelectionRange(0, input.value.length);
+                  try {{
+                    copied = document.execCommand('copy');
+                  }} catch (e) {{}}
+                }}
+                if (copied) {{
+                  var button = entry.querySelector('.copy');
+                  var text = button.dataset.label || button.textContent;
+                  button.dataset.label = text;
+                  button.textContent = labels.copied;
+                  setTimeout(function () {{
+                    button.textContent = text;
+                  }}, 2000);
+                }}
+              }}
+
+              // Guide through the accounts one at a time
+              function setCurrent() {{
+                var next = null;
+                Array.prototype.forEach.call(entries, function (entry) {{
+                  entry.classList.remove('current');
+                  if (!next && entry.classList.contains('pending')) {{
+                    next = entry;
+                  }}
+                }});
+                if (next) {{
+                  next.classList.add('current');
+                  if (next !== current) {{
+                    next.querySelector('.open').focus();
+                  }}
+                }}
+                current = next;
+              }}
+
+              Array.prototype.forEach.call(entries, function (entry) {{
+                var input = entry.querySelector('.code');
+                input.addEventListener('focus', function () {{
+                  input.select();
+                }});
+                entry.querySelector('.copy').addEventListener('click', function () {{
+                  copyCode(entry);
+                }});
+                // Copy the code when opening the sign-in page, so it is ready
+                // to be pasted if Google does not accept the pre-filled code
+                entry.querySelector('.open').addEventListener('click', function () {{
+                  copyCode(entry);
+                }});
+              }});
+
+              function update() {{
+                var request = new XMLHttpRequest();
+                request.open('GET', statusUrl);
+                request.onload = function () {{
+                  if (request.status !== 200) {{
+                    clearInterval(timer);
+                    document.getElementById('ended').hidden = false;
+                    return;
+                  }}
+                  var statuses = JSON.parse(request.responseText);
+                  var done = statuses.length > 0;
+                  Array.prototype.forEach.call(entries, function (entry) {{
+                    var state = statuses[entry.dataset.idx] || 'pending';
+                    entry.classList.remove('pending', 'approved', 'failed');
+                    entry.classList.add(state);
+                    entry.querySelector('.status').textContent = labels[state] || '';
+                    done = done && state === 'approved';
+                  }});
+                  setCurrent();
+                  if (done) {{
+                    clearInterval(timer);
+                    document.getElementById('done').hidden = false;
+                  }}
+                }};
+                request.send();
+              }}
+
+              setCurrent();
+              timer = setInterval(update, 3000);
+            }})();
+        '''),
+        'css': ''.join('\t\t\t'.expandtabs(2) + line for line in dedent('''
+            body {
+              background: #141718;
+              margin: 0;
+              font-family: Arial, Helvetica, sans-serif;
+              color: #fff;
+            }
+            .center {
+              margin: auto;
+              max-width: 600px;
+              padding: 10px;
+            }
+            h5 {
+              font-size: 18px;
+              font-weight: 600;
+              background: #0f84a5;
+              padding: 10px 20px;
+              margin: 0;
+            }
+            .content {
+              background: #1a2123;
+              padding: 15px 20px;
+            }
+            p {
+              font-size: 16px;
+              line-height: 1.4;
+              margin: 0 0 15px;
+            }
+            .entry {
+              border-top: 1px solid #147a96;
+              padding: 15px 0;
+            }
+            .title {
+              font-size: 18px;
+              font-weight: 600;
+              margin-bottom: 10px;
+            }
+            .status {
+              float: right;
+              font-size: 14px;
+              font-weight: normal;
+              color: #b0b0b0;
+            }
+            .approved .status {
+              color: #7fff00;
+            }
+            .failed .status {
+              color: #ff4040;
+            }
+            .row {
+              display: flex;
+              gap: 10px;
+              margin-bottom: 10px;
+            }
+            .code {
+              flex: 1;
+              min-width: 0;
+              font-family: monospace;
+              font-size: 22px;
+              letter-spacing: 2px;
+              color: #fff;
+              background: #141718;
+              border: 1px solid #147a96;
+              border-radius: 5px;
+              padding: 8px;
+            }
+            button, .open {
+              font-size: 16px;
+              color: #fff;
+              background: #141718;
+              border: 1px solid #147a96;
+              border-radius: 5px;
+              padding: 10px 15px;
+            }
+            .open {
+              display: block;
+              text-align: center;
+              text-decoration: none;
+              background: #0f84a5;
+            }
+            .approved .row, .approved .open {
+              display: none;
+            }
+            .current {
+              border-left: 4px solid #0f84a5;
+              padding-left: 12px;
+            }
+            .pending:not(.current) {
+              opacity: 0.6;
+            }
+            .entry:not(.current) .open {
+              background: #141718;
+            }
+            .note {
+              border-top: 1px solid #147a96;
+              padding-top: 15px;
             }
         ''').splitlines(True)) + '\t\t'.expandtabs(2)
     }

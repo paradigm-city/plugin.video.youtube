@@ -79,7 +79,12 @@ class XbmcContextUI(AbstractContextUI):
             ),
         )
 
-    def create_qr_code_dialog(self, heading, message, entries):
+    def create_qr_code_dialog(self,
+                              heading,
+                              message,
+                              entries,
+                              qr=None,
+                              qr_lines=()):
         from .xbmc_qr_code_dialog import XbmcQRCodeDialog
 
         return XbmcQRCodeDialog(
@@ -87,7 +92,24 @@ class XbmcContextUI(AbstractContextUI):
             message=message,
             entries=entries,
             cancel_label=self._context.localize('cancel'),
+            qr=qr,
+            qr_lines=qr_lines,
         )
+
+    @staticmethod
+    def open_in_browser(url):
+        if xbmc.getCondVisibility('System.Platform.Android'):
+            xbmc.executebuiltin('StartAndroidActivity("",'
+                                '"android.intent.action.VIEW",'
+                                '"","{0}")'.format(url))
+            return True
+
+        import webbrowser
+
+        try:
+            return webbrowser.open(url, new=2)
+        except (webbrowser.Error, OSError):
+            return False
 
     @staticmethod
     def on_keyboard_input(title, default='', hidden=False):

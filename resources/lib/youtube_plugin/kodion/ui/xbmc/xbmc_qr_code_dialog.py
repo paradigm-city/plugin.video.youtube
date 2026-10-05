@@ -65,21 +65,35 @@ class _Window(xbmcgui.WindowDialog):
 
 class XbmcQRCodeDialog(object):
     """
-    Non-modal window showing up to four QR codes side by side, each with a
-    title, lines of text and an updatable status line.
+    Non-modal window showing up to four entries, each with a title, lines of
+    text and an updatable status line.
+
+    Without a single qr, entries are shown side by side, each with its own
+    QR code. With a single qr, that QR code is shown on the left and the
+    entries are listed next to it.
 
     entries: sequence of dicts with keys
         title: str
         qr: str, data to encode as a QR code
-        lines: sequence of str, shown below the QR code
+        lines: sequence of str, shown below the title
+    qr: str, optional data to encode as a single QR code for all entries
+    qr_lines: sequence of str, shown below the single QR code
     """
     log = logging.getLogger(__name__)
 
-    def __init__(self, heading, message, entries, cancel_label=''):
+    def __init__(self,
+                 heading,
+                 message,
+                 entries,
+                 cancel_label='',
+                 qr=None,
+                 qr_lines=()):
         self._heading = heading
         self._message = message
         self._entries = tuple(entries)
         self._cancel_label = cancel_label
+        self._qr = qr
+        self._qr_lines = tuple(qr_lines)
         self._window = None
         self._status_labels = []
         self._footer_label = None
@@ -105,6 +119,12 @@ class XbmcQRCodeDialog(object):
             return ''
         self._files.append(path)
         return path
+
+    def _qr_texture(self, data):
+        return self._write_texture(
+            'sign_in_qr_%08x.png' % (crc32(data.encode('utf-8')) & 0xFFFFFFFF),
+            to_png(encode(data)),
+        )
 
     def _solid_texture(self, name):
         return self._write_texture(
@@ -136,52 +156,10 @@ class XbmcQRCodeDialog(object):
         )
         controls.append(message_box)
 
-        num_entries = len(self._entries) or 1
-        column_width = min(_COLUMN_MAX_WIDTH, inner_width // num_entries)
-        image_size = min(_IMAGE_MAX_SIZE, column_width - 30)
-        column_x = (_WIDTH - column_width * num_entries) // 2
-
-        for entry_idx, entry in enumerate(self._entries):
-            x = column_x + entry_idx * column_width
-            y = _COLUMNS_TOP
-
-            controls.append(xbmcgui.ControlLabel(
-                x, y, column_width, 30,
-                '[B]%s[/B]' % entry['title'],
-                textColor=_TEXT_COLOUR,
-                alignment=XBFONT_CENTER_X,
-            ))
-            y += 35
-
-            image = self._write_texture(
-                'sign_in_qr_%08x.png' % (crc32(entry['qr'].encode('utf-8'))
-                                         & 0xFFFFFFFF),
-                to_png(encode(entry['qr'])),
-            )
-            controls.append(xbmcgui.ControlImage(
-                x + (column_width - image_size) // 2, y,
-                image_size, image_size,
-                image,
-            ))
-            y += image_size + 10
-
-            for line in entry.get('lines', ()):
-                controls.append(xbmcgui.ControlLabel(
-                    x, y, column_width, 30,
-                    line,
-                    textColor=_TEXT_COLOUR,
-                    alignment=XBFONT_CENTER_X,
-                ))
-                y += 30
-
-            status_label = xbmcgui.ControlLabel(
-                x, y, column_width, 30,
-                '',
-                textColor=_DIM_TEXT_COLOUR,
-                alignment=XBFONT_CENTER_X,
-            )
-            controls.append(status_label)
-            self._status_labels.append(status_label)
+        if self._qr:
+            self._add_list(controls, inner_x, inner_width)
+        else:
+            self._add_columns(controls, inner_width)
 
         button_width = 180
         button_height = 45
@@ -212,6 +190,95 @@ class XbmcQRCodeDialog(object):
         window.setFocus(cancel_button)
         window.show()
         self._window = window
+
+    def _add_list(self, controls, inner_x, inner_width):
+        """Single QR code on the left, entries listed on the right"""
+        image_size = _IMAGE_MAX_SIZE + 40
+        x = inner_x
+        y = _COLUMNS_TOP + 5
+        controls.append(xbmcgui.ControlImage(
+            x, y, image_size, image_size,
+            self._qr_texture(self._qr),
+        ))
+        y += image_size + 5
+        for line in self._qr_lines:
+            controls.append(xbmcgui.ControlLabel(
+                x - 10, y, image_size + 20, 30,
+                line,
+                textColor=_DIM_TEXT_COLOUR,
+                alignment=XBFONT_CENTER_X,
+            ))
+            y += 30
+
+        x = inner_x + image_size + 2 * _MARGIN
+        width = inner_x + inner_width - x
+        y = _COLUMNS_TOP
+        row_height = min(135, 420 // (len(self._entries) or 1))
+        for entry in self._entries:
+            controls.append(xbmcgui.ControlLabel(
+                x, y, width, 30,
+                '[B]%s[/B]' % entry['title'],
+                textColor=_TEXT_COLOUR,
+            ))
+            y += 30
+            controls.append(xbmcgui.ControlLabel(
+                x, y, width, 30,
+                '    '.join(entry.get('lines', ())),
+                textColor=_TEXT_COLOUR,
+            ))
+            y += 30
+            status_label = xbmcgui.ControlLabel(
+                x, y, width, 30,
+                '',
+                textColor=_DIM_TEXT_COLOUR,
+            )
+            controls.append(status_label)
+            self._status_labels.append(status_label)
+            y += row_height - 60
+
+    def _add_columns(self, controls, inner_width):
+        """Entries side by side, each with its own QR code"""
+        num_entries = len(self._entries) or 1
+        column_width = min(_COLUMN_MAX_WIDTH, inner_width // num_entries)
+        image_size = min(_IMAGE_MAX_SIZE, column_width - 30)
+        column_x = (_WIDTH - column_width * num_entries) // 2
+
+        for entry_idx, entry in enumerate(self._entries):
+            x = column_x + entry_idx * column_width
+            y = _COLUMNS_TOP
+
+            controls.append(xbmcgui.ControlLabel(
+                x, y, column_width, 30,
+                '[B]%s[/B]' % entry['title'],
+                textColor=_TEXT_COLOUR,
+                alignment=XBFONT_CENTER_X,
+            ))
+            y += 35
+
+            controls.append(xbmcgui.ControlImage(
+                x + (column_width - image_size) // 2, y,
+                image_size, image_size,
+                self._qr_texture(entry['qr']),
+            ))
+            y += image_size + 10
+
+            for line in entry.get('lines', ()):
+                controls.append(xbmcgui.ControlLabel(
+                    x, y, column_width, 30,
+                    line,
+                    textColor=_TEXT_COLOUR,
+                    alignment=XBFONT_CENTER_X,
+                ))
+                y += 30
+
+            status_label = xbmcgui.ControlLabel(
+                x, y, column_width, 30,
+                '',
+                textColor=_DIM_TEXT_COLOUR,
+                alignment=XBFONT_CENTER_X,
+            )
+            controls.append(status_label)
+            self._status_labels.append(status_label)
 
     def close(self):
         window = self._window

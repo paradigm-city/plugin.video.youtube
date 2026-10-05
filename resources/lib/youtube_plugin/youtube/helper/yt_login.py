@@ -10,10 +10,16 @@
 
 from __future__ import absolute_import, division, unicode_literals
 
+from json import dumps as json_dumps
+from secrets import token_hex
+from time import time
 from timeit import default_timer
 
 from ..youtube_exceptions import LoginException
 from ...kodion import logging
+from ...kodion.compatibility import urlsplit, urlunsplit
+from ...kodion.constants import PATHS, SERVER_WAKEUP, SIGN_IN_CODES
+from ...kodion.network import httpd_status
 
 
 SIGN_IN = 'in'
@@ -94,6 +100,7 @@ def _request_codes(client, context, token_idx, token_type):
             'user_code=',
             user_code,
         )),
+        'user_code': user_code,
         'lines': (
             display_url,
             ui.bold(user_code),
@@ -101,76 +108,194 @@ def _request_codes(client, context, token_idx, token_type):
     }
 
 
+def _sign_in_page_urls(context, token):
+    """
+    URLs of the sign-in page served by the addon's HTTP server, as a tuple of
+    the URL for a web browser on this device, and the URL for other devices
+    on the local network. Either is None if the page cannot be reached.
+    """
+    if not context.ipc_exec(SERVER_WAKEUP, timeout=5, payload={'force': True}):
+        return None, None
+    url = httpd_status(context, path=PATHS.SIGN_IN, query='t=' + token)
+    if not url:
+        return None, None
+
+    parts = urlsplit(url)
+    host = parts.hostname
+    if not host or host in {'localhost', '::1'} or host.startswith('127.'):
+        logging.info('Sign-in page not available to other devices'
+                     ' - HTTP server only listening on {host!r}', host=host)
+        return url, None
+
+    # Browsers treat loopback addresses as secure, allowing the page to copy
+    # codes to the clipboard, so use them on this device where possible
+    listen_address = context.get_settings().httpd_listen()
+    if listen_address == '0.0.0.0':
+        local_url = urlunsplit(parts._replace(
+            netloc='127.0.0.1:%d' % parts.port
+        ))
+    elif listen_address == '::':
+        local_url = urlunsplit(parts._replace(
+            netloc='[::1]:%d' % parts.port
+        ))
+    else:
+        local_url = url
+    return local_url, url
+
+
 def _poll_access_tokens(context, client, pending, new_tokens):
     localize = context.localize
     ui = context.get_ui()
 
-    waiting = localize('sign.status.waiting')
+    # Codes are shared with the HTTP server, running in the service, so that
+    # a single page, in a web browser on this or another device, can link to
+    # every sign-in page in turn
+    token = token_hex(8)
+    shared = {
+        'token': token,
+        'entries': [{
+            'title': entry['title'],
+            'code': entry['user_code'],
+            'url': entry['qr'],
+            'status': 'pending',
+        } for entry in pending],
+    }
+    ui.set_property(SIGN_IN_CODES, json_dumps(shared),
+                    log_redact='REDACTED')
+    local_url, remote_url = _sign_in_page_urls(context, token)
+
+    browser_opened = False
+    if local_url and ui.on_yes_no_input(
+            localize('sign.in'),
+            localize('sign.browser.confirm'),
+            nolabel=localize('sign.browser.no'),
+            yeslabel=localize('sign.browser.yes'),
+    ):
+        browser_opened = ui.open_in_browser(local_url)
+        if not browser_opened:
+            ui.show_notification(localize('sign.browser.failed'))
+
+    if browser_opened:
+        message = localize('sign.qr.browser_text')
+    elif remote_url:
+        message = localize('sign.qr.page_text')
+    else:
+        message = localize('sign.qr.text')
+    if remote_url:
+        dialog_options = {
+            'message': message,
+            'qr': remote_url,
+            'qr_lines': (urlsplit(remote_url).netloc,),
+        }
+    else:
+        dialog_options = {
+            'message': message,
+        }
+
+    try:
+        with ui.create_qr_code_dialog(
+                heading=localize('sign.in'),
+                entries=pending,
+                **dialog_options
+        ) as dialog:
+            _wait_for_approval(context, client, pending, new_tokens,
+                               dialog, shared, keep_alive=bool(local_url))
+    finally:
+        if all(entry['status'] == 'approved' for entry in shared['entries']):
+            # Keep the final state for a while, so that the sign-in page can
+            # show the last approval before it stops checking for updates
+            shared['expires'] = time() + 30
+            ui.set_property(SIGN_IN_CODES, json_dumps(shared),
+                            log_redact='REDACTED')
+        else:
+            ui.clear_property(SIGN_IN_CODES)
+
+
+def _wait_for_approval(context,
+                       client,
+                       pending,
+                       new_tokens,
+                       dialog,
+                       shared,
+                       keep_alive=False):
+    localize = context.localize
+    ui = context.get_ui()
+
     approved = ui.color('lime', localize('sign.status.approved'))
     deadline = default_timer() + min(entry['expires_in'] for entry in pending)
 
-    with ui.create_qr_code_dialog(
-            heading=localize('sign.in'),
-            message=localize('sign.qr.text'),
-            entries=pending,
-    ) as dialog:
-        for entry_idx in range(len(pending)):
-            dialog.set_status(entry_idx, waiting)
+    def set_status(entry_idx, status, label):
+        dialog.set_status(entry_idx, label)
+        shared['entries'][entry_idx]['status'] = status
+        ui.set_property(SIGN_IN_CODES, json_dumps(shared),
+                    log_redact='REDACTED')
 
-        remaining_entries = len(pending)
-        while remaining_entries and not dialog.is_aborted():
-            now = default_timer()
-            remaining = deadline - now
-            if remaining <= 0:
-                break
-            dialog.set_footer(localize(
-                'sign.expires_in',
-                '%d:%02d' % divmod(int(remaining), 60),
-            ))
+    waiting = localize('sign.status.waiting')
+    for entry_idx in range(len(pending)):
+        dialog.set_status(entry_idx, waiting)
 
-            for entry_idx, entry in enumerate(pending):
-                if entry['next_poll'] is None or entry['next_poll'] > now:
-                    continue
+    # Stop the HTTP server from shutting down when Kodi is idle
+    keep_alive_interval = 60
+    next_keep_alive = default_timer() + keep_alive_interval
 
-                json_data = client.request_access_token(
-                    entry['token_idx'], entry['device_code']
-                )
-                logging.debug('Requesting access token: {data!p}',
-                              data=json_data)
-                entry['next_poll'] = now + entry['interval']
+    remaining_entries = len(pending)
+    while remaining_entries and not dialog.is_aborted():
+        now = default_timer()
+        remaining = deadline - now
+        if remaining <= 0:
+            break
+        dialog.set_footer(localize(
+            'sign.expires_in',
+            '%d:%02d' % divmod(int(remaining), 60),
+        ))
 
-                if json_data and 'error' not in json_data:
-                    access_token = json_data.get('access_token', '')
-                    refresh_token = json_data.get('refresh_token', '')
-                    if not access_token and not refresh_token:
-                        expiry = 0
-                    else:
-                        expiry = int(json_data.get('expires_in', 3600))
-                    new_tokens[entry['token_idx']] = (
-                        access_token, expiry, refresh_token
-                    )
-                    dialog.set_status(entry_idx, approved)
-                elif not json_data:
-                    dialog.set_status(entry_idx, ui.color('red', '-'))
-                elif json_data['error'] == 'slow_down':
-                    entry['interval'] += 5
-                    entry['next_poll'] = now + entry['interval']
-                    continue
-                elif json_data['error'] != 'authorization_pending':
-                    message = json_data['error']
-                    title = '%s: %s' % (context.get_name(), message)
-                    ui.show_notification(message, title)
-                    logging.error_trace('Access token request error - %s',
-                                        message)
-                    dialog.set_status(entry_idx, ui.color('red', message))
+        if keep_alive and now >= next_keep_alive:
+            next_keep_alive = now + keep_alive_interval
+            context.ipc_exec(SERVER_WAKEUP)
+
+        for entry_idx, entry in enumerate(pending):
+            if entry['next_poll'] is None or entry['next_poll'] > now:
+                continue
+
+            json_data = client.request_access_token(
+                entry['token_idx'], entry['device_code']
+            )
+            logging.debug('Requesting access token: {data!p}',
+                          data=json_data)
+            entry['next_poll'] = now + entry['interval']
+
+            if json_data and 'error' not in json_data:
+                access_token = json_data.get('access_token', '')
+                refresh_token = json_data.get('refresh_token', '')
+                if not access_token and not refresh_token:
+                    expiry = 0
                 else:
-                    continue
+                    expiry = int(json_data.get('expires_in', 3600))
+                new_tokens[entry['token_idx']] = (
+                    access_token, expiry, refresh_token
+                )
+                set_status(entry_idx, 'approved', approved)
+            elif not json_data:
+                set_status(entry_idx, 'failed', ui.color('red', '-'))
+            elif json_data['error'] == 'slow_down':
+                entry['interval'] += 5
+                entry['next_poll'] = now + entry['interval']
+                continue
+            elif json_data['error'] != 'authorization_pending':
+                message = json_data['error']
+                title = '%s: %s' % (context.get_name(), message)
+                ui.show_notification(message, title)
+                logging.error_trace('Access token request error - %s',
+                                    message)
+                set_status(entry_idx, 'failed', ui.color('red', message))
+            else:
+                continue
 
-                entry['next_poll'] = None
-                remaining_entries -= 1
+            entry['next_poll'] = None
+            remaining_entries -= 1
 
-            if context.sleep(1):
-                break
+        if context.sleep(1):
+            break
 
 
 def _do_login(provider, context, client=None, **kwargs):
