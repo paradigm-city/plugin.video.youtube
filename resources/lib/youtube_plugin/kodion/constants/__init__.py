@@ -155,6 +155,7 @@ PLAYER_VIDEO_ID = 'player_video_id'
 PLAYLIST_PATH = 'playlist_path'
 PLAYLIST_POSITION = 'playlist_position'
 REROUTE_PATH = 'reroute_path'
+SIGN_IN_CODES = 'sign_in_codes'
 
 # Routing parameters
 WINDOW_CACHE = 'window_cache'
@@ -317,6 +318,7 @@ __all__ = (
     'PLAYLIST_PATH',
     'PLAYLIST_POSITION',
     'REROUTE_PATH',
+    'SIGN_IN_CODES',
 
     # Routing parameters
     'WINDOW_CACHE',
