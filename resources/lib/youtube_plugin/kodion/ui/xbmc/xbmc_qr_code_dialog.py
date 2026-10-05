@@ -14,7 +14,7 @@ from zlib import crc32
 
 from ... import logging
 from ...compatibility import xbmcgui
-from ...constants import TEMP_PATH
+from ...constants import DATA_PATH
 from ...utils.file_system import make_dirs
 from ...utils.qr_code import encode, png_bytes, to_png
 
@@ -23,6 +23,9 @@ ACTION_PREVIOUS_MENU = 10
 ACTION_NAV_BACK = 92
 XBFONT_CENTER_X = 0x00000002
 XBFONT_CENTER_Y = 0x00000004
+
+# Kodi does not load textures from special://temp, so use addon data instead
+TEXTURE_PATH = '/'.join((DATA_PATH, 'sign_in'))
 
 # Window coordinates are in the default 1280x720 skin resolution
 _WIDTH = 1280
@@ -90,7 +93,7 @@ class XbmcQRCodeDialog(object):
         self.close()
 
     def _write_texture(self, name, data):
-        base_path = make_dirs(TEMP_PATH)
+        base_path = make_dirs(TEXTURE_PATH)
         if not base_path:
             return ''
         path = os.path.join(base_path, name)

@@ -1614,7 +1614,7 @@ msgid "Developer API keys"
 msgstr ""
 
 msgctxt "#30827"
-msgid "Scan each QR code with your phone, or go to the address shown and enter the code, then approve access. This window closes automatically once everything has been approved."
+msgid "Scan each QR code with your phone, or go to the address shown, and approve access. If Google says the codes do not match, copy the code shown there, press Continue and paste it. This window closes automatically once everything has been approved."
 msgstr ""
 
 msgctxt "#30828"

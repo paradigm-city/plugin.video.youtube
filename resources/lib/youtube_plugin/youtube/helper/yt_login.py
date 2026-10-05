@@ -85,8 +85,9 @@ def _request_codes(client, context, token_idx, token_type):
             'vr': 'YouTube VR',
             'dev': localize('sign.client.dev'),
         }.get(token_type, token_type),
-        # Code is pre-filled by the verification page where supported,
-        # otherwise it is ignored and the code has to be entered manually
+        # Code is pre-filled by the verification page where supported. Where
+        # it is rejected ("codes do not match"), the page still shows the code
+        # so it can be copied into the form that follows.
         'qr': ''.join((
             verification_url,
             '&' if '?' in verification_url else '?',
