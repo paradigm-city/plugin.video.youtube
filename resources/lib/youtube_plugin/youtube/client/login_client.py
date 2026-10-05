@@ -152,7 +152,7 @@ class YouTubeLoginClient(YouTubeRequestClient):
         json_data = getattr(kwargs['exc'], 'json_data', None)
         if not json_data or 'error' not in json_data:
             return None, None, None, None, LoginException
-        if json_data['error'] == 'authorization_pending':
+        if json_data['error'] in {'authorization_pending', 'slow_down'}:
             return None, None, None, json_data, False
         if (json_data['error'] == 'invalid_grant'
                 and json_data.get('code') == 400):
