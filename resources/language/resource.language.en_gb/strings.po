@@ -1630,7 +1630,7 @@ msgid "Expires in %s"
 msgstr ""
 
 msgctxt "#30831"
-msgid "Click \"Open sign-in page\" for each account below, then choose your Google account and allow access. The code is copied for you: if Google says the codes do not match, press Continue and paste it. Afterwards, close the Google tab to return here for the next account."
+msgid "Click \"Open sign-in page\" for each account below, then choose your Google account and allow access. The code is copied for you: if Google says the codes do not match, press Continue and paste it. Once access is allowed, the sign-in window closes and the next account is selected. If it stays open, close it yourself."
 msgstr ""
 
 msgctxt "#30832"
@@ -1646,7 +1646,7 @@ msgid "Open sign-in page"
 msgstr ""
 
 msgctxt "#30835"
-msgid "All done. You can close this page."
+msgid "All done. You can close this page and return to Kodi."
 msgstr ""
 
 msgctxt "#30836"

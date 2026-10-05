@@ -1111,6 +1111,39 @@ class Pages(object):
               var entries = document.querySelectorAll('.entry');
               var timer = null;
               var current = null;
+              var popups = {{}};
+
+              // Open Google in a small window over this page, rather than a
+              // new tab, so that it can be closed again once access is allowed
+              function openPopup(entry, url) {{
+                var width = Math.min(520, screen.availWidth);
+                var height = Math.min(720, screen.availHeight);
+                var left = window.screenX + (window.outerWidth - width) / 2;
+                var top = window.screenY + 60;
+                var popup = window.open(url, 'youtube_sign_in', [
+                  'popup',
+                  'width=' + width,
+                  'height=' + height,
+                  'left=' + Math.max(0, Math.round(left)),
+                  'top=' + Math.max(0, Math.round(top))
+                ].join(','));
+                if (popup) {{
+                  popups[entry.dataset.idx] = popup;
+                }}
+                return Boolean(popup);
+              }}
+
+              function closePopup(entry) {{
+                var popup = popups[entry.dataset.idx];
+                if (!popup) {{
+                  return;
+                }}
+                delete popups[entry.dataset.idx];
+                try {{
+                  popup.close();
+                }} catch (e) {{}}
+                window.focus();
+              }}
 
               function copyCode(entry) {{
                 var input = entry.querySelector('.code');
@@ -1165,8 +1198,12 @@ class Pages(object):
                 }});
                 // Copy the code when opening the sign-in page, so it is ready
                 // to be pasted if Google does not accept the pre-filled code
-                entry.querySelector('.open').addEventListener('click', function () {{
+                entry.querySelector('.open').addEventListener('click', function (event) {{
                   copyCode(entry);
+                  // Fall back to a new tab if popups are blocked
+                  if (openPopup(entry, this.href)) {{
+                    event.preventDefault();
+                  }}
                 }});
               }});
 
@@ -1183,6 +1220,9 @@ class Pages(object):
                   var done = statuses.length > 0;
                   Array.prototype.forEach.call(entries, function (entry) {{
                     var state = statuses[entry.dataset.idx] || 'pending';
+                    if (state !== 'pending') {{
+                      closePopup(entry);
+                    }}
                     entry.classList.remove('pending', 'approved', 'failed');
                     entry.classList.add(state);
                     entry.querySelector('.status').textContent = labels[state] || '';
@@ -1198,7 +1238,7 @@ class Pages(object):
               }}
 
               setCurrent();
-              timer = setInterval(update, 3000);
+              timer = setInterval(update, 2000);
             }})();
         '''),
         'css': ''.join('\t\t\t'.expandtabs(2) + line for line in dedent('''
