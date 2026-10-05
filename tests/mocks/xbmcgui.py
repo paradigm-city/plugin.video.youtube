@@ -185,10 +185,19 @@ class DialogProgressBG(object):
         return False
 
 
+# Window properties are shared by every Window instance with the same id, as
+# in Kodi, where e.g. Window(10000) properties are visible to all addon code
+WINDOW_PROPERTIES = {}
+
+
+def clear_window_properties():
+    WINDOW_PROPERTIES.clear()
+
+
 class Window(object):
     def __init__(self, existing_window_id=0):
         self._window_id = existing_window_id
-        self._properties = {}
+        self._properties = WINDOW_PROPERTIES.setdefault(existing_window_id, {})
 
     def setProperty(self, key, value):
         self._properties[str(key)] = str(value)
@@ -198,4 +207,114 @@ class Window(object):
 
     def clearProperty(self, key):
         self._properties.pop(str(key), None)
+
+
+class Action(object):
+    def __init__(self, action_id=0):
+        self._id = action_id
+
+    def getId(self):
+        return self._id
+
+
+class Control(object):
+    def __init__(self, x, y, width, height):
+        self.x = x
+        self.y = y
+        self.width = width
+        self.height = height
+
+
+class ControlImage(Control):
+    def __init__(self, x, y, width, height, filename,
+                 aspectRatio=0, colorDiffuse=None):
+        super(ControlImage, self).__init__(x, y, width, height)
+        self.filename = filename
+
+    def setImage(self, filename, useCache=True):
+        self.filename = filename
+
+
+class ControlLabel(Control):
+    def __init__(self, x, y, width, height, label, font=None,
+                 textColor=None, disabledColor=None, alignment=0,
+                 hasPath=False, angle=0):
+        super(ControlLabel, self).__init__(x, y, width, height)
+        self.label = label
+        self.alignment = alignment
+
+    def setLabel(self, label='', *_args, **_kwargs):
+        self.label = label
+
+    def getLabel(self):
+        return self.label
+
+
+class ControlTextBox(Control):
+    def __init__(self, x, y, width, height, font=None, textColor=None):
+        super(ControlTextBox, self).__init__(x, y, width, height)
+        self.text = ''
+
+    def setText(self, text):
+        self.text = text
+
+    def getText(self):
+        return self.text
+
+
+class ControlButton(Control):
+    def __init__(self, x, y, width, height, label, focusTexture=None,
+                 noFocusTexture=None, textOffsetX=0, textOffsetY=0,
+                 alignment=0, font=None, textColor=None, disabledColor=None,
+                 angle=0, shadowColor=None, focusedColor=None):
+        super(ControlButton, self).__init__(x, y, width, height)
+        self.label = label
+        self.focusTexture = focusTexture
+        self.noFocusTexture = noFocusTexture
+
+    def setLabel(self, label='', *_args, **_kwargs):
+        self.label = label
+
+    def getLabel(self):
+        return self.label
+
+
+class WindowDialog(Window):
+    def __init__(self):
+        super(WindowDialog, self).__init__()
+        self.controls = []
+        self.focused = None
+        self.shown = False
+        self.closed = False
+
+    def addControl(self, control):
+        self.controls.append(control)
+
+    def addControls(self, controls):
+        self.controls.extend(controls)
+
+    def removeControl(self, control):
+        self.controls.remove(control)
+
+    def setFocus(self, control):
+        self.focused = control
+
+    def getFocus(self):
+        return self.focused
+
+    def show(self):
+        self.shown = True
+        self.closed = False
+
+    def doModal(self):
+        self.show()
+
+    def close(self):
+        self.closed = True
+
+    def onAction(self, action):
+        pass
+
+    def onControl(self, control):
+        pass
 
