@@ -34,8 +34,6 @@ new_strings.txt
 convert_settings.py
 core.po
 .coverage
-todo/implementation_plan.md
-todo/project_analysis_and_action_plan.md
-todo/walkthrough.md
+todo/
 .pytest_cache/
 
