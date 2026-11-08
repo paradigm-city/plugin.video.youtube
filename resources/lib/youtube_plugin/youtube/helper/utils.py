@@ -694,12 +694,16 @@ def update_video_items(provider, context, video_id_dict,
 
     in_bookmarks_list = False
     in_my_subscriptions_list = False
+    in_search_results = False
     in_watch_history_list = False
     in_watch_later_list = False
 
     if path.startswith((PATHS.MY_SUBSCRIPTIONS,
                         PATHS.MY_SUBSCRIPTIONS_FILTERED)):
         in_my_subscriptions_list = True
+    elif path.startswith((PATHS.SEARCH + '/query',
+                          PATHS.EXTERNAL_SEARCH + '/query')):
+        in_search_results = True
     elif path.startswith(PATHS.WATCH_LATER):
         in_watch_later_list = True
     elif path.startswith(PATHS.BOOKMARKS):
@@ -1120,7 +1124,53 @@ def update_video_items(provider, context, video_id_dict,
         else:
             context_menu = []
 
-        if available:
+        if available and in_search_results:
+            # Searching is done to find something to play, or to keep for
+            # later. Play all and sorting entries are added by the search.
+            context_menu.extend((
+                # Play
+                cxm_play,
+                cxm_queue,
+                cxm_separator,
+                # Keep for later and follow the channel
+                cxm_watch_later
+                if watch_later_id and not in_watch_later_list else
+                menu_items.watch_later_local_add(context, media_item)
+                if not in_watch_later_list else
+                None,
+                cxm_go_to_channel
+                if channel_id else
+                None,
+                cxm_unsubscribe_from_channel
+                if channel_id and logged_in and subscribed else
+                cxm_subscribe_to_channel
+                if channel_id and logged_in else
+                None,
+                cxm_remove_bookmarked_channel
+                if channel_id and channel_id in bookmarked_channel_ids else
+                cxm_bookmark_channel
+                if channel_id else
+                None,
+                cxm_separator,
+                # YouTube video and general Kodi playback and item actions
+                cxm_more,
+                cxm_rate,
+                cxm_play_with_subtitles,
+                cxm_play_audio_only,
+                cxm_play_ask_for_quality,
+                cxm_play_timeshift if media_item.live else None,
+                cxm_play_using,
+                cxm_refresh_listing,
+                cxm_mark_watched if use_play_data else None,
+                cxm_mark_unwatched if use_play_data else None,
+                cxm_reset_resume
+                if use_play_data and play_data
+                and (play_data.get('played_percent', 0) > 0
+                     or play_data.get('played_time', 0) > 0) else
+                None,
+                cxm_favourite,
+            ))
+        elif available:
             context_menu.extend((
                 # YouTube video
                 cxm_play,

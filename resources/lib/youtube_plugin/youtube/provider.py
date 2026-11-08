@@ -1161,6 +1161,30 @@ class Provider(AbstractProvider):
                 'live': False,
             },
         ))
+
+        # Allow playing through the search results
+        video_items = [
+            item for item in result
+            if isinstance(item, VideoItem) and item.available
+        ]
+        if len(video_items) > 1:
+            video_ids = [item.video_id for item in video_items]
+            cxm_play = menu_items.media_play(context)
+            cxm_play_all = menu_items.media_play_all(context, video_ids)
+            for item in video_items:
+                context_menu = item.get_context_menu()
+                if not context_menu or cxm_play not in context_menu:
+                    continue
+                item.add_context_menu(
+                    (
+                        menu_items.media_play_from(context,
+                                                   video_ids,
+                                                   item.video_id),
+                        cxm_play_all,
+                    ),
+                    position=context_menu.index(cxm_play) + 1,
+                    end_separator=None,
+                )
         return result, options
 
     @AbstractProvider.register_path('^/config/(?P<action>[^/]+)/?$')

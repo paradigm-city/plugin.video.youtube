@@ -31,6 +31,7 @@ from ..constants import (
     TITLE,
     URI,
     VIDEO_ID,
+    VIDEO_IDS,
     WINDOW_RETURN,
 )
 
@@ -222,6 +223,34 @@ def playlist_play_from(context,
             (PATHS.PLAY,),
             {
                 PLAYLIST_ID: playlist_id,
+                VIDEO_ID: video_id,
+            },
+        ),
+    )
+
+
+def media_play_all(context, video_ids):
+    return (
+        context.localize('playlist.play.all'),
+        context_menu_uri(
+            context,
+            (PATHS.PLAY,),
+            {
+                VIDEO_IDS: video_ids,
+                ORDER: 'default',
+            },
+        ),
+    )
+
+
+def media_play_from(context, video_ids, video_id=VIDEO_ID_INFOLABEL):
+    return (
+        context.localize('playlist.play.from_here'),
+        context_menu_uri(
+            context,
+            (PATHS.PLAY,),
+            {
+                VIDEO_IDS: video_ids,
                 VIDEO_ID: video_id,
             },
         ),
