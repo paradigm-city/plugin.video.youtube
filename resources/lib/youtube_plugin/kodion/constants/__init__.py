@@ -149,6 +149,7 @@ CONTAINER_POSITION = 'container_position'
 DEVELOPER_CONFIGS = 'configs'
 LICENSE_TOKEN = 'license_token'
 LICENSE_URL = 'license_url'
+LISTING_LOADED = 'listing_loaded'
 MARK_AS_LABEL = 'mark_as_label'
 PLAYER_DATA = 'player_json'
 PLAYER_VIDEO_ID = 'player_video_id'
@@ -312,6 +313,7 @@ __all__ = (
     'DEVELOPER_CONFIGS',
     'LICENSE_TOKEN',
     'LICENSE_URL',
+    'LISTING_LOADED',
     'MARK_AS_LABEL',
     'PLAYER_DATA',
     'PLAYER_VIDEO_ID',

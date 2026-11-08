@@ -15,11 +15,14 @@ from ... import logging
 from ...compatibility import string_type, xbmc, xbmcgui, xbmcplugin
 from ...constants import (
     ACTION,
+    ADDON_ID,
     BUSY_FLAG,
     CONTAINER_FOCUS,
     CONTAINER_ID,
     CONTAINER_POSITION,
+    FOLDER_URI,
     FORCE_PLAY_PARAMS,
+    LISTING_LOADED,
     PATHS,
     PLAYBACK_FAILED,
     PLAYER_VIDEO_ID,
@@ -355,6 +358,18 @@ class XbmcPlugin(AbstractPlugin):
             fallback = options.get(provider.FALLBACK, not force_return)
             if isinstance(fallback, string_type) and fallback != uri:
                 if options.get(provider.POST_RUN):
+                    if not succeeded and handle != -1:
+                        # Kodi reloads the current folder when a listing fails.
+                        # Wait for the reload to complete, otherwise it races
+                        # the post run action and replaces the new listing.
+                        ui.clear_property(LISTING_LOADED)
+                        post_run_actions.append((
+                            self.wait_for_listing,
+                            {
+                                'context': context,
+                                'ui': ui,
+                            },
+                        ))
                     _, _post_run_action = self.uri_action(
                         context,
                         fallback,
@@ -420,6 +435,8 @@ class XbmcPlugin(AbstractPlugin):
             updateListing=update_listing,
             cacheToDisc=cache_to_disc,
         )
+        if items and succeeded and handle != -1:
+            ui.set_property(LISTING_LOADED, uri)
 
         if not force_return:
             if any(sync_items):
@@ -481,6 +498,23 @@ class XbmcPlugin(AbstractPlugin):
                 else:
                     context.execute(action)
                 context.sleep(interval)
+
+    @staticmethod
+    def wait_for_listing(context,
+                         ui,
+                         timeout=5,
+                         interval=0.1,
+                         _url='plugin://{0}/'.format(ADDON_ID)):
+        while not ui.pop_property(LISTING_LOADED):
+            # Only listings of this addon signal that they have been loaded
+            folder_uri = ui.get_container_info(FOLDER_URI, container_id=None)
+            if not folder_uri.startswith(_url):
+                break
+            timeout -= interval
+            if timeout < 0:
+                logging.warning('Listing not loaded - Continuing anyway')
+                break
+            context.sleep(interval)
 
     @staticmethod
     def uri_action(context, uri):

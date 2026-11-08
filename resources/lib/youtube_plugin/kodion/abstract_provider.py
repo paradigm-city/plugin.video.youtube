@@ -479,7 +479,12 @@ class AbstractProvider(object):
                 localize('search.title')
             )
             if result and query:
-                result = []
+                # Fail the listing so Kodi stays on the current folder without
+                # adding the input to the window history, then open the search
+                # results from there. Navigating back from a placeholder listing
+                # before opening the results races the directory update of the
+                # parent folder, which can replace the search results.
+                result = False
                 options = {
                     provider.FALLBACK: context.create_uri(
                         (PATHS.SEARCH, 'query'),
@@ -489,10 +494,7 @@ class AbstractProvider(object):
                             'return': True,
                         },
                     ),
-                    provider.FORCE_RETURN: True,
                     provider.POST_RUN: True,
-                    provider.CACHE_TO_DISC: True,
-                    provider.UPDATE_LISTING: False,
                 }
             else:
                 result = False
