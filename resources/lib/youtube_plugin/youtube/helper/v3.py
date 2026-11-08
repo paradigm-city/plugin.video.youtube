@@ -88,6 +88,7 @@ def _process_list_response(provider,
     channel_items_dict = {}
 
     items = []
+    section_context_menus = []
     position = 0
     do_callbacks = False
 
@@ -204,6 +205,8 @@ def _process_list_response(provider,
             else:
                 item_id = None
             if item_id:
+                # Sorting through the results is a priority, so add it after
+                # the first section of the item specific entries
                 yt_item['_context_menu'] = {
                     'context_menu': (
                         menu_items.search_sort_by(context, params, 'relevance'),
@@ -212,7 +215,7 @@ def _process_list_response(provider,
                         menu_items.search_sort_by(context, params, 'rating'),
                         menu_items.search_sort_by(context, params, 'title'),
                     ),
-                    'position': 0,
+                    'position': 'section',
                 }
             else:
                 log.debug('searchResult discarded: %r', kind)
@@ -523,7 +526,13 @@ def _process_list_response(provider,
                 stack.appendleft(item)
 
         if '_context_menu' in yt_item:
-            item.add_context_menu(**yt_item['_context_menu'])
+            context_menu = yt_item['_context_menu']
+            if context_menu.get('position') == 'section':
+                # Item updaters add their entries later, so defer adding these
+                # until the item specific sections are known
+                section_context_menus.append((item, context_menu))
+            else:
+                item.add_context_menu(**context_menu)
 
         if '_callback' in yt_item:
             item.callback = yt_item.pop('_callback')
@@ -717,6 +726,15 @@ def _process_list_response(provider,
         new_thread.daemon = True
         resource['thread'] = new_thread
         new_thread.start()
+
+    cxm_separator = menu_items.separator()
+    for item, context_menu in section_context_menus:
+        existing_context_menu = item.get_context_menu() or ()
+        if cxm_separator in existing_context_menu:
+            position = existing_context_menu.index(cxm_separator) + 1
+        else:
+            position = 'end'
+        item.add_context_menu(context_menu['context_menu'], position=position)
 
     return items, do_callbacks
 
